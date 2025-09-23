@@ -828,6 +828,10 @@ kbd {
   gap: 1.25rem;
 }
 
+.side-rail .panel {
+  background: var(--panel-solid);
+}
+
 .panel {
   background: var(--panel);
   border-radius: var(--radius-lg);

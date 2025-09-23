@@ -48,7 +48,7 @@ const viewMenuBtn = document.getElementById('viewMenuBtn');
 const toggleOutlineBtn = document.getElementById('toggleOutlineBtn');
 const togglePreviewBtn = document.getElementById('togglePreviewBtn');
 const writingPanel = document.querySelector('.writing-panel');
-const viewModeButtons = document.querySelectorAll('[data-view-mode]');
+const viewModeButtons = document.querySelectorAll('.view-switch__btn[data-view-mode]');
 
 const DOCUMENTS_KEY = 'scriptius-documents';
 const ACTIVE_DOCUMENT_KEY = 'scriptius-active-document';
@@ -334,7 +334,7 @@ function suggestNextType(currentType) {
     case 'parenthetical':
       return 'dialogue';
     case 'dialogue':
-      return 'dialogue';
+      return 'action';
     case 'lyric':
       return 'lyric';
     case 'scene':
@@ -821,6 +821,18 @@ function analyseLine(rawLine, previousType) {
     };
   }
 
+  if (/^[A-Z]$/.test(trimmed) && (previousType !== 'dialogue' || leadingWhitespace >= CHARACTER_INDENT - 2)) {
+    return {
+      type: 'character',
+      content: normaliseCharacter(trimmed),
+      indent: INDENTS.character,
+      leadingWhitespace,
+      trailingWhitespace,
+      location: null,
+      timeOfDay: null,
+    };
+  }
+
   if (isCharacter(trimmed)) {
     return {
       type: 'character',
@@ -919,6 +931,8 @@ function isCharacter(line) {
   const withoutParenthetical = line.replace(/\(.*?\)/g, '');
   if (/[a-z]/.test(withoutParenthetical)) return false;
   if (!/[A-Z]/.test(withoutParenthetical)) return false;
+  const significant = withoutParenthetical.replace(/[^A-Z0-9]/g, '');
+  if (significant.length < 2) return false;
   if (/^[0-9\W]+$/.test(withoutParenthetical)) return false;
   return true;
 }
