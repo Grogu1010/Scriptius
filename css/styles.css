@@ -1612,9 +1612,7 @@ body.drawer-open {
   .header-metrics {
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   }
-}
 
-@media (max-width: 960px) {
   .workspace {
     grid-template-columns: minmax(0, 1fr);
   }
