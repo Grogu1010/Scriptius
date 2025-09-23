@@ -13,146 +13,267 @@
     <link rel="stylesheet" href="css/styles.css" />
   </head>
   <body>
-    <header class="app-header">
-      <div class="brand">
-        <div class="logo" aria-hidden="true">✶</div>
-        <div class="title-group">
-          <span class="brand-title">Scriptius</span>
-          <span class="brand-tagline">Focused screenwriting workspace</span>
-        </div>
-      </div>
-      <button type="button" class="ghost library-btn" id="libraryBtn" title="View your saved scripts">
-        Library
-      </button>
-      <div class="document-meta">
-        <label for="scriptTitle" class="sr-only">Script title</label>
-        <input
-          id="scriptTitle"
-          class="title-input"
-          type="text"
-          placeholder="Untitled Script"
-          autocomplete="off"
-          spellcheck="false"
-        />
-        <div class="meta-actions">
-          <div class="menu-group">
-            <button type="button" class="ghost" id="viewMenuBtn" aria-haspopup="true" aria-expanded="false">
-              View ▾
+    <div class="background-canvas" aria-hidden="true">
+      <div class="background-orb orb-one"></div>
+      <div class="background-orb orb-two"></div>
+      <div class="background-grid"></div>
+    </div>
+
+    <div class="app-shell">
+      <header class="app-header glass-panel">
+        <div class="header-primary">
+          <div class="brand">
+            <div class="logo" aria-hidden="true">✶</div>
+            <div class="title-group">
+              <span class="brand-title">Scriptius</span>
+              <span class="brand-tagline">Focused screenwriting workspace</span>
+            </div>
+          </div>
+          <div class="header-actions">
+            <button type="button" class="ghost pill" id="libraryBtn" title="View your saved scripts">
+              <span class="btn-icon" aria-hidden="true">☰</span>
+              <span>Library</span>
             </button>
-            <ul class="menu view-menu" id="viewMenu" role="menu">
-              <li role="menuitem">
-                <button type="button" id="toggleOutlineBtn" data-view-target="outline">Hide outline</button>
-              </li>
-              <li role="menuitem">
-                <button type="button" id="togglePreviewBtn" data-view-target="preview">Hide preview</button>
-              </li>
+            <button
+              type="button"
+              class="ghost icon"
+              id="themeToggle"
+              title="Toggle theme"
+              aria-label="Toggle theme"
+            >
+              🌗
+            </button>
+          </div>
+        </div>
+
+        <div class="document-meta">
+          <div class="title-area">
+            <label for="scriptTitle" class="sr-only">Script title</label>
+            <input
+              id="scriptTitle"
+              class="title-input"
+              type="text"
+              placeholder="Untitled Script"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div class="meta-actions">
+            <div class="menu-group">
+              <button type="button" class="ghost" id="viewMenuBtn" aria-haspopup="true" aria-expanded="false">
+                View ▾
+              </button>
+              <ul class="menu view-menu" id="viewMenu" role="menu">
+                <li role="menuitem">
+                  <button type="button" id="toggleOutlineBtn" data-view-target="outline">Hide outline</button>
+                </li>
+                <li role="menuitem">
+                  <button type="button" id="togglePreviewBtn" data-view-target="preview">Hide preview</button>
+                </li>
+              </ul>
+            </div>
+            <button type="button" class="ghost" id="newDocumentBtn" title="Start a fresh document">
+              New
+            </button>
+            <button type="button" class="ghost" id="importDocumentBtn" title="Import Fountain or text">
+              Import
+            </button>
+            <input type="file" id="filePicker" accept=".fountain,.txt,.md,.fdx" hidden />
+            <div class="menu-group">
+              <button type="button" class="ghost" id="exportMenuBtn" aria-haspopup="true" aria-expanded="false">
+                Export ▾
+              </button>
+              <ul class="menu" id="exportMenu" role="menu">
+                <li role="menuitem">
+                  <button type="button" id="downloadFountainBtn">Download Fountain</button>
+                </li>
+                <li role="menuitem">
+                  <button type="button" id="downloadTxtBtn">Download Text</button>
+                </li>
+                <li role="menuitem">
+                  <button type="button" id="printBtn">Print / PDF</button>
+                </li>
+              </ul>
+            </div>
+            <button type="button" class="primary" id="shareBtn" title="Create a shareable link">
+              Share
+            </button>
+          </div>
+        </div>
+
+        <div class="header-secondary">
+          <div class="hero-copy">
+            <h1>Design your next script beat by beat</h1>
+            <p>
+              Snap between outline, formatted pages and insights while autosave keeps every draft safe on this device.
+            </p>
+            <ul class="hero-list">
+              <li>Break scenes into beats straight from the outline panel.</li>
+              <li>Preview formatted pages instantly as you type.</li>
+              <li>Share secure, local links whenever you need feedback.</li>
             </ul>
           </div>
-          <button type="button" class="ghost" id="newDocumentBtn" title="Start a fresh document">
-            New
-          </button>
-          <button type="button" class="ghost" id="importDocumentBtn" title="Import Fountain or text">
-            Import
-          </button>
-          <input type="file" id="filePicker" accept=".fountain,.txt,.md,.fdx" hidden />
-          <div class="menu-group">
-            <button type="button" class="ghost" id="exportMenuBtn" aria-haspopup="true" aria-expanded="false">
-              Export ▾
-            </button>
-            <ul class="menu" id="exportMenu" role="menu">
-              <li role="menuitem">
-                <button type="button" id="downloadFountainBtn">Download Fountain</button>
-              </li>
-              <li role="menuitem">
-                <button type="button" id="downloadTxtBtn">Download Text</button>
-              </li>
-              <li role="menuitem">
-                <button type="button" id="printBtn">Print / PDF</button>
-              </li>
+          <div class="header-metrics">
+            <article class="status-card glass-panel">
+              <h2 class="status-label">Autosave</h2>
+              <div class="status-indicator" data-autosave-indicator data-state="idle">
+                <span class="status-dot" aria-hidden="true"></span>
+                <span id="autosaveStatus">Draft not saved</span>
+              </div>
+              <p class="status-subtext">Changes stay on this device until you export or share.</p>
+            </article>
+            <article class="progress-card glass-panel">
+              <div class="progress-top">
+                <span class="progress-title">Story pace</span>
+                <span class="progress-runtime" id="runtimeStat">Runtime: 0 min</span>
+              </div>
+              <div
+                class="progress-track"
+                id="scriptProgressTrack"
+                role="progressbar"
+                aria-valuemin="0"
+                aria-valuemax="110"
+                aria-valuenow="0"
+                aria-label="Estimated screenplay pages completed"
+              >
+                <div class="progress-value" id="scriptProgressValue"></div>
+              </div>
+              <p class="progress-caption" id="progressLabel">Start charting your opening act.</p>
+              <div class="metric-grid" id="statusMetrics">
+                <div class="metric-pill">
+                  <span class="metric-label">Words</span>
+                  <span class="metric-value" id="wordStat">0 words</span>
+                </div>
+                <div class="metric-pill">
+                  <span class="metric-label">Scenes</span>
+                  <span class="metric-value" id="sceneStat">0 scenes</span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="panel outline" aria-label="Scene outline">
+          <div class="panel-header">
+            <div class="panel-heading">
+              <h2>Outline</h2>
+              <p class="panel-description">Collect beats and jump to any scene instantly.</p>
+            </div>
+            <div class="panel-subtext" id="sceneCount">0 scenes</div>
+          </div>
+          <ol class="scene-list" id="sceneList"></ol>
+          <div class="panel-section">
+            <div class="panel-section-heading">
+              <h3>Quick beats</h3>
+              <span class="panel-hint">Scratchpad for ideas, beats and TODOs.</span>
+            </div>
+            <textarea id="beatNotes" placeholder="Jot down beats, reminders or TODOs…"></textarea>
+          </div>
+        </aside>
+
+        <section class="panel editor" aria-label="Script editor">
+          <div class="panel-header">
+            <div class="panel-heading">
+              <h2>Script draft</h2>
+              <p class="panel-description">Use the shortcuts below to keep writing without breaking flow.</p>
+            </div>
+          </div>
+          <div class="toolbar" role="toolbar" aria-label="Insert elements">
+            <div class="toolbar-snippets">
+              <button type="button" data-snippet="INT. " class="toolbar-btn">Scene</button>
+              <button type="button" data-snippet="EXT. " class="toolbar-btn">Exterior</button>
+              <button type="button" data-snippet="CHARACTER" class="toolbar-btn">Character</button>
+              <button type="button" data-snippet="(CONT'D)" class="toolbar-btn">Parenthetical</button>
+              <button type="button" data-snippet="CUT TO:" class="toolbar-btn">Transition</button>
+            </div>
+            <div class="toolbar-quick-actions">
+              <button type="button" id="focusModeToggle" class="toolbar-chip">Focus mode</button>
+              <button type="button" id="statsToggle" class="toolbar-chip">Show stats</button>
+            </div>
+          </div>
+
+          <label for="scriptEditor" class="sr-only">Script editor</label>
+          <textarea
+            id="scriptEditor"
+            spellcheck="false"
+            autocomplete="off"
+            autocapitalize="none"
+            placeholder="Write your screenplay here…"
+          ></textarea>
+          <div class="status-bar">
+            <div class="status-left">
+              <span class="status-tip-label">Flow tip</span>
+              <p class="status-tip">
+                Press <kbd>Tab</kbd> to align dialogue instantly or use the snippet keys to insert elements.
+              </p>
+            </div>
+            <div class="status-right">
+              <span class="hint-chip">⌘ + S exports a Fountain copy</span>
+              <span class="hint-chip">Use Outline to jump between beats</span>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel preview" aria-label="Preview and insights">
+          <div class="panel-header">
+            <div class="panel-heading">
+              <h2>Formatted pages</h2>
+              <p class="panel-description">
+                Review how pages break while staying perfectly aligned with the editor.
+              </p>
+            </div>
+            <div class="panel-subtext" id="pageIndicator">Page 1 of 1</div>
+          </div>
+          <div class="preview-scroll" id="previewScroller">
+            <div id="scriptPreview" aria-live="polite"></div>
+          </div>
+          <section class="panel-section insights-section">
+            <div class="panel-section-heading">
+              <h3>Insights</h3>
+              <span class="panel-hint">Track balance across characters, action and dialogue.</span>
+            </div>
+            <ul class="insights" id="insightsList"></ul>
+          </section>
+          <section class="panel-section share-section">
+            <div class="panel-section-heading">
+              <h3>Share link</h3>
+              <span class="panel-hint">Generate a local link when you're ready for feedback.</span>
+            </div>
+            <div class="share-row">
+              <input type="text" id="shareLink" readonly placeholder="Generate link via Share" />
+              <button type="button" id="copyShareLinkBtn" class="ghost">Copy</button>
+            </div>
+          </section>
+        </aside>
+      </main>
+
+      <footer class="app-footer glass-panel">
+        <div class="footer-content">
+          <div class="footer-shortcuts">
+            <span class="footer-label">Keyboard shortcuts</span>
+            <ul class="shortcut-list">
+              <li><kbd>Enter</kbd> inserts the next logical element</li>
+              <li><kbd>Shift</kbd> + <kbd>Enter</kbd> keeps the current style</li>
+              <li><kbd>Tab</kbd> adds manual indentation</li>
             </ul>
           </div>
-          <button type="button" class="ghost" id="shareBtn" title="Create a shareable link">
-            Share
-          </button>
-          <button type="button" class="ghost" id="themeToggle" title="Toggle theme">
-            🌗
-          </button>
+          <p class="footer-note">
+            Scriptius is offline-first — export or share when you're ready to collaborate.
+          </p>
         </div>
-      </div>
-    </header>
-
-    <main class="workspace">
-      <aside class="panel outline" aria-label="Scene outline">
-        <div class="panel-header">
-          <h2>Outline</h2>
-          <div class="panel-subtext" id="sceneCount">0 scenes</div>
-        </div>
-        <ol class="scene-list" id="sceneList"></ol>
-        <div class="panel-section">
-          <h3>Quick beats</h3>
-          <textarea id="beatNotes" placeholder="Jot down beats, reminders or TODOs…"></textarea>
-        </div>
-      </aside>
-
-      <section class="panel editor" aria-label="Script editor">
-        <div class="toolbar" role="toolbar" aria-label="Insert elements">
-          <button type="button" data-snippet="INT. " class="toolbar-btn">Scene</button>
-          <button type="button" data-snippet="EXT. " class="toolbar-btn">Exterior</button>
-          <button type="button" data-snippet="CHARACTER" class="toolbar-btn">Character</button>
-          <button type="button" data-snippet="(CONT'D)" class="toolbar-btn">Parenthetical</button>
-          <button type="button" data-snippet="CUT TO:" class="toolbar-btn">Transition</button>
-          <span class="toolbar-divider"></span>
-          <button type="button" id="focusModeToggle" class="toolbar-btn">Focus mode</button>
-          <button type="button" id="statsToggle" class="toolbar-btn">Show stats</button>
-        </div>
-
-        <label for="scriptEditor" class="sr-only">Script editor</label>
-        <textarea
-          id="scriptEditor"
-          spellcheck="false"
-          autocomplete="off"
-          autocapitalize="none"
-          placeholder="Write your screenplay here…"
-        ></textarea>
-        <div class="status-bar">
-          <div class="status-left">
-            <span id="autosaveStatus">Draft not saved</span>
-          </div>
-          <div class="status-right" id="statusMetrics">
-            <span id="wordStat">0 words</span>
-            <span id="sceneStat">0 scenes</span>
-            <span id="runtimeStat">Runtime: 0 min</span>
-          </div>
-        </div>
-      </section>
-
-      <aside class="panel preview" aria-label="Preview and insights">
-        <div class="panel-header">
-          <h2>Formatted pages</h2>
-          <div class="panel-subtext" id="pageIndicator">Page 1 of 1</div>
-        </div>
-        <div class="preview-scroll" id="previewScroller">
-          <div id="scriptPreview" aria-live="polite"></div>
-        </div>
-        <section class="panel-section">
-          <h3>Insights</h3>
-          <ul class="insights" id="insightsList"></ul>
-        </section>
-        <section class="panel-section">
-          <h3>Share link</h3>
-          <div class="share-row">
-            <input type="text" id="shareLink" readonly placeholder="Generate link via Share" />
-            <button type="button" id="copyShareLinkBtn" class="ghost">Copy</button>
-          </div>
-        </section>
-      </aside>
-    </main>
+      </footer>
+    </div>
 
     <div class="drawer" id="libraryDrawer" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="libraryTitle">
-      <div class="drawer-panel">
+      <div class="drawer-panel glass-panel">
         <header class="drawer-header">
-          <h2 id="libraryTitle">My scripts</h2>
-          <button type="button" class="ghost" id="closeLibraryBtn" aria-label="Close library">✕</button>
+          <div>
+            <h2 id="libraryTitle">My scripts</h2>
+            <p class="drawer-subtext">Switch drafts, duplicate your favorites or start fresh.</p>
+          </div>
+          <button type="button" class="ghost icon" id="closeLibraryBtn" aria-label="Close library">✕</button>
         </header>
         <div class="drawer-controls">
           <label for="librarySearch" class="sr-only">Search scripts</label>
@@ -168,10 +289,10 @@
     </div>
 
     <div class="modal" id="shareModal" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
-      <div class="modal-content">
+      <div class="modal-content glass-panel">
         <header class="modal-header">
           <h2 id="shareTitle">Share your script</h2>
-          <button type="button" class="ghost" id="closeShareModal" aria-label="Close share dialog">✕</button>
+          <button type="button" class="ghost icon" id="closeShareModal" aria-label="Close share dialog">✕</button>
         </header>
         <p>
           Scriptius generates a secure, local link that contains your script content. Send it to collaborators so they

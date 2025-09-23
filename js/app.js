@@ -31,6 +31,10 @@ const focusModeToggle = document.getElementById('focusModeToggle');
 const statsToggle = document.getElementById('statsToggle');
 const themeToggle = document.getElementById('themeToggle');
 const toolbar = document.querySelector('.toolbar');
+const autosaveIndicator = document.querySelector('[data-autosave-indicator]');
+const progressTrack = document.getElementById('scriptProgressTrack');
+const progressValue = document.getElementById('scriptProgressValue');
+const progressLabel = document.getElementById('progressLabel');
 
 const libraryBtn = document.getElementById('libraryBtn');
 const libraryDrawer = document.getElementById('libraryDrawer');
@@ -51,6 +55,7 @@ const THEME_KEY = 'scriptius-theme';
 const LAYOUT_KEY = 'scriptius-layout';
 const AUTOSAVE_DELAY = 800;
 const LINES_PER_PAGE = 55;
+const PROGRESS_PAGE_GOAL = 110;
 const NUMBER_FORMATTER = new Intl.NumberFormat();
 
 const INDENTS = Object.freeze({
@@ -1003,6 +1008,41 @@ function updateStats(lineInfos) {
   wordStat.textContent = formatCount(wordCount, 'word', 'words');
   sceneStat.textContent = formatCount(scenes, 'scene', 'scenes');
   runtimeStat.textContent = `Runtime: ${formatCount(pageCount, 'min', 'mins')}`;
+  updateProgressUI(wordCount, pageCount);
+}
+
+function updateProgressUI(wordCount, pageCount) {
+  if (progressTrack) {
+    const value = wordCount ? Math.min(pageCount, PROGRESS_PAGE_GOAL) : 0;
+    progressTrack.setAttribute('aria-valuenow', String(value));
+  }
+  if (progressValue) {
+    const ratioBase = wordCount ? Math.min(pageCount / PROGRESS_PAGE_GOAL, 1) : 0;
+    const ratio = Math.max(0, ratioBase);
+    progressValue.style.setProperty('--progress', ratio.toFixed(4));
+  }
+  if (progressLabel) {
+    progressLabel.textContent = buildProgressMessage(wordCount, pageCount);
+  }
+}
+
+function buildProgressMessage(wordCount, pageCount) {
+  if (!wordCount) {
+    return 'Start charting your opening act.';
+  }
+  let stage;
+  if (pageCount < 15) {
+    stage = 'Act I foundations are taking shape';
+  } else if (pageCount < 40) {
+    stage = 'Build momentum toward the midpoint';
+  } else if (pageCount < 70) {
+    stage = 'Drive the second act forward';
+  } else if (pageCount < 100) {
+    stage = 'Line up the finale beats and payoff';
+  } else {
+    stage = 'Feature length achieved — tighten and refine';
+  }
+  return `${formatCount(wordCount, 'word', 'words')} captured — ${stage}.`;
 }
 
 function updateInsights(lineInfos) {
@@ -1189,7 +1229,9 @@ function scheduleAutosave() {
 }
 
 function markDirty() {
+  if (isDirty) return;
   isDirty = true;
+  updateAutosaveStatus();
 }
 
 function performAutosave() {
@@ -1213,19 +1255,40 @@ function performAutosave() {
 }
 
 function updateAutosaveStatus() {
+  let message = '';
+  let state = 'idle';
+
   if (!lastSavedAt) {
-    autosaveStatus.textContent = isDirty ? 'Unsaved changes' : 'Draft not saved';
-    return;
-  }
-  const diffMs = Date.now() - lastSavedAt.getTime();
-  if (diffMs < 2000) {
-    autosaveStatus.textContent = 'Saved just now';
-  } else if (diffMs < 60000) {
-    autosaveStatus.textContent = `Saved ${Math.round(diffMs / 1000)}s ago`;
-  } else if (diffMs < 3600000) {
-    autosaveStatus.textContent = `Saved ${Math.round(diffMs / 60000)}m ago`;
+    if (isDirty) {
+      message = 'Unsaved changes';
+      state = 'dirty';
+    } else {
+      message = 'Draft not saved';
+      state = 'idle';
+    }
+  } else if (isDirty) {
+    message = 'Unsaved changes';
+    state = 'dirty';
   } else {
-    autosaveStatus.textContent = `Saved ${lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    const diffMs = Date.now() - lastSavedAt.getTime();
+    if (diffMs < 2000) {
+      message = 'Saved just now';
+      state = 'fresh';
+    } else if (diffMs < 60000) {
+      message = `Saved ${Math.round(diffMs / 1000)}s ago`;
+      state = 'fresh';
+    } else if (diffMs < 3600000) {
+      message = `Saved ${Math.round(diffMs / 60000)}m ago`;
+      state = 'stale';
+    } else {
+      message = `Saved ${lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+      state = 'stale';
+    }
+  }
+
+  autosaveStatus.textContent = message;
+  if (autosaveIndicator) {
+    autosaveIndicator.dataset.state = state;
   }
 }
 
