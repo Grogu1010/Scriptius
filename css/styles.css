@@ -461,8 +461,25 @@ button.primary {
   position: relative;
 }
 
+.script-page::after {
+  content: 'Page ' attr(data-page-number);
+  position: absolute;
+  bottom: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(15, 23, 42, 0.4);
+  pointer-events: none;
+}
+
 [data-theme='dark'] .script-page {
   background: #e9edf5;
+}
+
+[data-theme='dark'] .script-page::after {
+  color: rgba(15, 23, 42, 0.5);
 }
 
 .script-line {

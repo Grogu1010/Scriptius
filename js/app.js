@@ -50,6 +50,8 @@ const LEGACY_STORAGE_KEY = 'scriptius-document';
 const THEME_KEY = 'scriptius-theme';
 const LAYOUT_KEY = 'scriptius-layout';
 const AUTOSAVE_DELAY = 800;
+const LINES_PER_PAGE = 55;
+const NUMBER_FORMATTER = new Intl.NumberFormat();
 
 const INDENTS = Object.freeze({
   action: '',
@@ -78,6 +80,10 @@ let isDirty = false;
 let documents = [];
 let currentDocumentId = null;
 let libraryPreviouslyFocused = null;
+const previewState = {
+  lineToPage: [],
+  pageCount: 1,
+};
 
 init();
 
@@ -895,8 +901,12 @@ function mapCaretPosition(originalCaret, lineInfos, formattedText) {
 
 function updatePreview(lineInfos) {
   previewContainer.innerHTML = '';
+  previewState.lineToPage = new Array(lineInfos.length);
+  previewState.pageCount = 1;
+
   const fragment = document.createDocumentFragment();
-  let currentPage = createPage();
+  let currentPageNumber = 1;
+  let currentPage = createPage(currentPageNumber);
   fragment.appendChild(currentPage);
   let countableLines = 0;
 
@@ -905,14 +915,17 @@ function updatePreview(lineInfos) {
     placeholder.className = 'script-line action';
     placeholder.textContent = 'Start writing to see formatted pages here.';
     currentPage.appendChild(placeholder);
+    previewState.pageCount = currentPageNumber;
     previewContainer.appendChild(fragment);
+    updatePageIndicator(null);
     return;
   }
 
   lineInfos.forEach((info) => {
     const shouldCount = info.type !== 'empty';
-    if (shouldCount && countableLines >= 55) {
-      currentPage = createPage();
+    if (shouldCount && countableLines >= LINES_PER_PAGE) {
+      currentPageNumber += 1;
+      currentPage = createPage(currentPageNumber);
       fragment.appendChild(currentPage);
       countableLines = 0;
     }
@@ -926,18 +939,22 @@ function updatePreview(lineInfos) {
       lineEl.innerHTML = '&nbsp;';
     }
     currentPage.appendChild(lineEl);
+    previewState.lineToPage[info.index] = currentPageNumber;
 
     if (shouldCount) {
       countableLines += 1;
     }
   });
 
+  previewState.pageCount = currentPageNumber;
   previewContainer.appendChild(fragment);
 }
 
-function createPage() {
+function createPage(pageNumber) {
   const page = document.createElement('div');
   page.className = 'script-page';
+  page.dataset.pageNumber = String(pageNumber);
+  page.setAttribute('aria-label', `Page ${pageNumber}`);
   return page;
 }
 
@@ -957,15 +974,15 @@ function updateOutline(lineInfos) {
     numberEl.textContent = `#${index + 1}`;
     titleEl.textContent = scene.location || scene.content;
     const time = scene.timeOfDay ? ` · ${scene.timeOfDay}` : '';
-    const page = Math.max(1, Math.round((scene.index + 1) / 55));
-    metaEl.textContent = `Page ${page}${time}`;
+    const page = getPageForLine(scene.index);
+    metaEl.textContent = `Page ${NUMBER_FORMATTER.format(page)}${time}`;
 
     button.dataset.lineIndex = String(scene.index);
     fragment.appendChild(clone);
   });
 
   sceneList.appendChild(fragment);
-  const label = `${scenes.length} ${scenes.length === 1 ? 'scene' : 'scenes'}`;
+  const label = formatCount(scenes.length, 'scene', 'scenes');
   sceneCountLabel.textContent = label;
 }
 
@@ -980,12 +997,12 @@ function updateStats(lineInfos) {
   });
 
   const scenes = lineInfos.filter((line) => line.type === 'scene').length;
-  const estimatedPages = Math.max(1, Math.round(nonEmptyLines / 55));
+  const fallbackPages = Math.max(1, Math.ceil(nonEmptyLines / LINES_PER_PAGE));
+  const pageCount = Math.max(1, previewState.pageCount || fallbackPages);
 
-  wordStat.textContent = `${wordCount} ${wordCount === 1 ? 'word' : 'words'}`;
-  sceneStat.textContent = `${scenes} ${scenes === 1 ? 'scene' : 'scenes'}`;
-  runtimeStat.textContent = `Runtime: ${estimatedPages} ${estimatedPages === 1 ? 'min' : 'mins'}`;
-  pageIndicator.textContent = `Est. ${estimatedPages} ${estimatedPages === 1 ? 'page' : 'pages'}`;
+  wordStat.textContent = formatCount(wordCount, 'word', 'words');
+  sceneStat.textContent = formatCount(scenes, 'scene', 'scenes');
+  runtimeStat.textContent = `Runtime: ${formatCount(pageCount, 'min', 'mins')}`;
 }
 
 function updateInsights(lineInfos) {
@@ -1045,18 +1062,18 @@ function updateInsights(lineInfos) {
     },
     {
       label: 'Unique characters',
-      value: characters.size ? `${characters.size}` : '—',
+      value: characters.size ? NUMBER_FORMATTER.format(characters.size) : '—',
     },
     {
       label: 'Most used location',
-      value: topLocation ? `${topLocation[0]} (${topLocation[1]})` : '—',
+      value: topLocation ? `${topLocation[0]} (${formatCount(topLocation[1], 'scene', 'scenes')})` : '—',
     },
   ];
 
   if (longestScene.title) {
     insights.push({
       label: 'Longest scene',
-      value: `${shortenSceneTitle(longestScene.title)} (${longestScene.length} lines)`,
+      value: `${shortenSceneTitle(longestScene.title)} (${formatCount(longestScene.length, 'line', 'lines')})`,
     });
   }
 
@@ -1077,8 +1094,12 @@ function shortenSceneTitle(title) {
 function highlightFromCaret(caret, options = {}) {
   const { scrollPreview = false } = options;
   const lineInfos = formattingResult.lineInfos;
-  if (!lineInfos.length) return;
+  if (!lineInfos.length) {
+    updatePageIndicator(null);
+    return;
+  }
   const lineIndex = getLineIndexFromCaret(caret, lineInfos);
+  updatePageIndicator(lineIndex);
   highlightPreviewLine(lineIndex, { scroll: scrollPreview });
   highlightOutlineScene(lineIndex, lineInfos);
 }
@@ -1117,6 +1138,26 @@ function highlightOutlineScene(lineIndex, lineInfos) {
   }
 }
 
+function updatePageIndicator(lineIndex) {
+  const totalPages = Math.max(1, previewState.pageCount || 1);
+  const safeIndex = Number.isInteger(lineIndex) && lineIndex >= 0 ? lineIndex : 0;
+  const currentPage = getPageForLine(safeIndex);
+  pageIndicator.textContent = `Page ${NUMBER_FORMATTER.format(currentPage)} of ${NUMBER_FORMATTER.format(totalPages)}`;
+}
+
+function getPageForLine(lineIndex) {
+  if (!Number.isInteger(lineIndex) || lineIndex < 0) {
+    return 1;
+  }
+  const mapped = previewState.lineToPage[lineIndex];
+  const fallback = Math.max(1, Math.ceil((lineIndex + 1) / LINES_PER_PAGE));
+  const page = Number.isInteger(mapped) && mapped > 0 ? mapped : fallback;
+  if (Number.isInteger(previewState.pageCount) && previewState.pageCount > 0) {
+    return Math.min(previewState.pageCount, page);
+  }
+  return page;
+}
+
 function findSceneIndexForLine(lineIndex, lineInfos) {
   let sceneCounter = -1;
   for (let i = 0; i <= lineIndex && i < lineInfos.length; i += 1) {
@@ -1131,6 +1172,11 @@ function countWords(text) {
   if (!text) return 0;
   const matches = text.trim().match(/\b\w+\b/g);
   return matches ? matches.length : 0;
+}
+
+function formatCount(count, singular, plural) {
+  const unit = count === 1 ? singular : plural;
+  return `${NUMBER_FORMATTER.format(count)} ${unit}`;
 }
 
 function scheduleAutosave() {
