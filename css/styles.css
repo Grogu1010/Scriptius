@@ -75,6 +75,7 @@ textarea {
   justify-content: space-between;
   padding: 1rem 1.75rem 1rem 1.5rem;
   gap: 1.5rem;
+  flex-wrap: wrap;
   backdrop-filter: blur(12px);
 }
 
@@ -119,6 +120,7 @@ textarea {
   align-items: center;
   gap: 1rem;
   flex: 1;
+  min-width: 280px;
 }
 
 .title-input {
@@ -226,6 +228,18 @@ button.primary {
   color: var(--accent);
   transform: none;
   box-shadow: none;
+}
+
+.view-menu button::before {
+  content: attr(data-state);
+  font-weight: 600;
+  margin-right: 0.5rem;
+  color: var(--accent);
+  visibility: hidden;
+}
+
+.view-menu button[aria-pressed='true']::before {
+  visibility: visible;
 }
 
 .workspace {
@@ -608,7 +622,9 @@ button.primary {
 [data-theme='dark'] .panel-section textarea,
 [data-theme='dark'] .share-row input,
 [data-theme='dark'] .modal-content,
-[data-theme='dark'] .scene-list {
+[data-theme='dark'] .scene-list,
+[data-theme='dark'] .drawer-panel,
+[data-theme='dark'] .document-card {
   background: rgba(15, 23, 42, 0.35);
 }
 
@@ -630,6 +646,26 @@ button.primary {
   flex-wrap: wrap;
 }
 
+.hide-outline .panel.outline {
+  display: none;
+}
+
+.hide-preview .panel.preview {
+  display: none;
+}
+
+.hide-outline:not(.hide-preview):not(.focus-mode) .workspace {
+  grid-template-columns: minmax(0, 1fr) 320px;
+}
+
+.hide-preview:not(.hide-outline):not(.focus-mode) .workspace {
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.hide-outline.hide-preview:not(.focus-mode) .workspace {
+  grid-template-columns: 1fr;
+}
+
 .focus-mode .panel.preview,
 .focus-mode .panel.outline {
   display: none;
@@ -637,6 +673,152 @@ button.primary {
 
 .focus-mode .workspace {
   grid-template-columns: 1fr;
+}
+
+.drawer {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.25);
+  backdrop-filter: blur(6px);
+  display: none;
+  z-index: 40;
+  align-items: stretch;
+  justify-content: flex-end;
+}
+
+.drawer.open {
+  display: flex;
+}
+
+.drawer-panel {
+  width: min(420px, 100%);
+  background: var(--panel);
+  border-left: 1px solid var(--panel-border);
+  box-shadow: var(--shadow-lg);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.drawer-controls {
+  display: flex;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+  flex-wrap: wrap;
+}
+
+.drawer-controls input[type='search'] {
+  flex: 1;
+  min-width: 160px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  padding: 0.6rem 0.85rem;
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text);
+}
+
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.document-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.document-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--panel-border);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.document-card.active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.document-card__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  color: inherit;
+  background: none;
+  padding: 0;
+}
+
+.document-card__title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.document-card__meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.document-card__excerpt {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.document-card__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.document-card__delete {
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0.4rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.document-card__delete:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.empty-library {
+  margin: 2rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.drawer-footer {
+  margin-top: 1.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+body.drawer-open {
+  overflow: hidden;
 }
 
 @media (max-width: 1280px) {

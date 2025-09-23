@@ -21,6 +21,9 @@
           <span class="brand-tagline">Focused screenwriting workspace</span>
         </div>
       </div>
+      <button type="button" class="ghost library-btn" id="libraryBtn" title="View your saved scripts">
+        Library
+      </button>
       <div class="document-meta">
         <label for="scriptTitle" class="sr-only">Script title</label>
         <input
@@ -32,6 +35,19 @@
           spellcheck="false"
         />
         <div class="meta-actions">
+          <div class="menu-group">
+            <button type="button" class="ghost" id="viewMenuBtn" aria-haspopup="true" aria-expanded="false">
+              View ▾
+            </button>
+            <ul class="menu view-menu" id="viewMenu" role="menu">
+              <li role="menuitem">
+                <button type="button" id="toggleOutlineBtn" data-view-target="outline">Hide outline</button>
+              </li>
+              <li role="menuitem">
+                <button type="button" id="togglePreviewBtn" data-view-target="preview">Hide preview</button>
+              </li>
+            </ul>
+          </div>
           <button type="button" class="ghost" id="newDocumentBtn" title="Start a fresh document">
             New
           </button>
@@ -131,6 +147,25 @@
         </section>
       </aside>
     </main>
+
+    <div class="drawer" id="libraryDrawer" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="libraryTitle">
+      <div class="drawer-panel">
+        <header class="drawer-header">
+          <h2 id="libraryTitle">My scripts</h2>
+          <button type="button" class="ghost" id="closeLibraryBtn" aria-label="Close library">✕</button>
+        </header>
+        <div class="drawer-controls">
+          <label for="librarySearch" class="sr-only">Search scripts</label>
+          <input type="search" id="librarySearch" placeholder="Search scripts…" autocomplete="off" />
+          <button type="button" id="createDocumentBtn" class="primary">New script</button>
+        </div>
+        <div class="drawer-body">
+          <ul class="document-list" id="documentList" role="list"></ul>
+          <p class="empty-library" id="emptyLibraryMessage" hidden>Your autosaved scripts will appear here.</p>
+        </div>
+        <footer class="drawer-footer">Scripts stay on this device unless you share or export them.</footer>
+      </div>
+    </div>
 
     <div class="modal" id="shareModal" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
       <div class="modal-content">

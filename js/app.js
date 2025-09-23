@@ -32,8 +32,23 @@ const statsToggle = document.getElementById('statsToggle');
 const themeToggle = document.getElementById('themeToggle');
 const toolbar = document.querySelector('.toolbar');
 
-const STORAGE_KEY = 'scriptius-document';
+const libraryBtn = document.getElementById('libraryBtn');
+const libraryDrawer = document.getElementById('libraryDrawer');
+const closeLibraryBtn = document.getElementById('closeLibraryBtn');
+const librarySearch = document.getElementById('librarySearch');
+const createDocumentBtn = document.getElementById('createDocumentBtn');
+const documentList = document.getElementById('documentList');
+const emptyLibraryMessage = document.getElementById('emptyLibraryMessage');
+const viewMenu = document.getElementById('viewMenu');
+const viewMenuBtn = document.getElementById('viewMenuBtn');
+const toggleOutlineBtn = document.getElementById('toggleOutlineBtn');
+const togglePreviewBtn = document.getElementById('togglePreviewBtn');
+
+const DOCUMENTS_KEY = 'scriptius-documents';
+const ACTIVE_DOCUMENT_KEY = 'scriptius-active-document';
+const LEGACY_STORAGE_KEY = 'scriptius-document';
 const THEME_KEY = 'scriptius-theme';
+const LAYOUT_KEY = 'scriptius-layout';
 const AUTOSAVE_DELAY = 800;
 
 const INDENTS = Object.freeze({
@@ -60,18 +75,19 @@ let isFormatting = false;
 let autosaveTimer = null;
 let lastSavedAt = null;
 let isDirty = false;
+let documents = [];
+let currentDocumentId = null;
+let libraryPreviouslyFocused = null;
 
 init();
 
 function init() {
   applyStoredTheme();
+  applyStoredLayout();
   attachEventListeners();
-  loadFromStorage();
+  bootstrapDocuments();
   loadFromShareLink();
-  if (!editor.value.trim()) {
-    seedWelcomePage();
-  }
-  applyFormattingAndRefresh({ preserveCaret: false });
+  updateViewMenuLabels();
   editor.focus();
   updateAutosaveStatus();
   setInterval(updateAutosaveStatus, 30000);
@@ -103,6 +119,27 @@ function attachEventListeners() {
     scheduleAutosave();
   });
 
+  libraryBtn.addEventListener('click', openLibrary);
+  closeLibraryBtn.addEventListener('click', closeLibrary);
+  libraryDrawer.addEventListener('click', (event) => {
+    if (event.target === libraryDrawer) {
+      closeLibrary();
+    }
+  });
+  librarySearch.addEventListener('input', renderDocumentLibrary);
+  createDocumentBtn.addEventListener('click', () => {
+    if (isDirty && editor.value.trim()) {
+      const proceed = window.confirm('Start a new script? Unsaved changes will be lost.');
+      if (!proceed) return;
+    }
+    const doc = createDocument();
+    loadDocument(doc, { preserveCaret: false });
+    closeLibrary();
+    editor.focus();
+    showSnackbar('Started a new script');
+  });
+  documentList.addEventListener('click', handleLibraryClick);
+
   newDocumentBtn.addEventListener('click', handleNewDocument);
   importBtn.addEventListener('click', () => filePicker.click());
   filePicker.addEventListener('change', handleImportFile);
@@ -127,7 +164,14 @@ function attachEventListeners() {
       exportMenu.classList.remove('open');
       exportMenuBtn.setAttribute('aria-expanded', 'false');
     }
+    if (!viewMenu.contains(event.target) && event.target !== viewMenuBtn) {
+      closeViewMenu();
+    }
   });
+
+  viewMenuBtn.addEventListener('click', toggleViewMenu);
+  toggleOutlineBtn.addEventListener('click', () => toggleWorkspacePanel('outline'));
+  togglePreviewBtn.addEventListener('click', () => toggleWorkspacePanel('preview'));
 
   shareBtn.addEventListener('click', openShareModal);
   copyShareLinkBtn.addEventListener('click', handleCopyShareLink);
@@ -198,6 +242,15 @@ function attachEventListeners() {
       downloadFile(filename, formattingResult.formattedText);
       showSnackbar('Saved a Fountain copy');
     }
+    if (event.key === 'Escape') {
+      if (shareModal.classList.contains('open')) {
+        closeShareModal();
+      } else if (libraryDrawer.classList.contains('open')) {
+        closeLibrary();
+      } else {
+        closeViewMenu();
+      }
+    }
   });
 }
 
@@ -216,7 +269,7 @@ function handleEditorKeydown(event) {
 
 function handleCaretChange() {
   const caret = editor.selectionStart;
-  highlightFromCaret(caret);
+  highlightFromCaret(caret, { scrollPreview: false });
 }
 
 function insertSnippet(snippet) {
@@ -283,6 +336,244 @@ function toggleExportMenu() {
   exportMenuBtn.setAttribute('aria-expanded', String(isOpen));
 }
 
+function toggleViewMenu() {
+  const isOpen = viewMenu.classList.toggle('open');
+  viewMenuBtn.setAttribute('aria-expanded', String(isOpen));
+}
+
+function closeViewMenu() {
+  if (!viewMenu.classList.contains('open')) return;
+  viewMenu.classList.remove('open');
+  viewMenuBtn.setAttribute('aria-expanded', 'false');
+}
+
+function toggleWorkspacePanel(panel) {
+  if (panel === 'outline') {
+    document.body.classList.toggle('hide-outline');
+  } else if (panel === 'preview') {
+    document.body.classList.toggle('hide-preview');
+  }
+  persistLayout();
+  updateViewMenuLabels();
+}
+
+function applyStoredLayout() {
+  try {
+    const stored = localStorage.getItem(LAYOUT_KEY);
+    if (!stored) return;
+    const payload = JSON.parse(stored);
+    if (payload?.hideOutline) {
+      document.body.classList.add('hide-outline');
+    }
+    if (payload?.hidePreview) {
+      document.body.classList.add('hide-preview');
+    }
+  } catch (error) {
+    console.warn('Failed to load layout preferences', error);
+  }
+}
+
+function persistLayout() {
+  const payload = {
+    hideOutline: document.body.classList.contains('hide-outline'),
+    hidePreview: document.body.classList.contains('hide-preview'),
+  };
+  try {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify(payload));
+  } catch (error) {
+    console.warn('Failed to store layout preferences', error);
+  }
+}
+
+function updateViewMenuLabels() {
+  const outlineHidden = document.body.classList.contains('hide-outline');
+  const previewHidden = document.body.classList.contains('hide-preview');
+  toggleOutlineBtn.dataset.state = '✓';
+  togglePreviewBtn.dataset.state = '✓';
+  toggleOutlineBtn.textContent = outlineHidden ? 'Show outline' : 'Hide outline';
+  togglePreviewBtn.textContent = previewHidden ? 'Show preview' : 'Hide preview';
+  toggleOutlineBtn.setAttribute('aria-pressed', String(!outlineHidden));
+  togglePreviewBtn.setAttribute('aria-pressed', String(!previewHidden));
+}
+
+function openLibrary() {
+  closeViewMenu();
+  exportMenu.classList.remove('open');
+  exportMenuBtn.setAttribute('aria-expanded', 'false');
+  renderDocumentLibrary();
+  libraryDrawer.classList.add('open');
+  libraryDrawer.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('drawer-open');
+  libraryPreviouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  requestAnimationFrame(() => {
+    librarySearch.focus();
+    librarySearch.select();
+  });
+}
+
+function closeLibrary() {
+  libraryDrawer.classList.remove('open');
+  libraryDrawer.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('drawer-open');
+  closeViewMenu();
+  if (libraryPreviouslyFocused?.focus) {
+    libraryPreviouslyFocused.focus();
+  }
+  libraryPreviouslyFocused = null;
+}
+
+function handleLibraryClick(event) {
+  const deleteBtn = event.target.closest('.document-card__delete');
+  const bodyBtn = event.target.closest('.document-card__body');
+  const item = event.target.closest('.document-card');
+  if (!item) return;
+  const docId = item.dataset.documentId;
+  if (!docId) return;
+
+  if (deleteBtn) {
+    event.stopPropagation();
+    const doc = documents.find((entry) => entry.id === docId);
+    const title = doc?.title?.trim() || 'Untitled script';
+    const proceed = window.confirm(`Delete "${title}"? This cannot be undone.`);
+    if (!proceed) return;
+    deleteDocument(docId);
+    renderDocumentLibrary();
+    return;
+  }
+
+  if (bodyBtn) {
+    if (docId === currentDocumentId) {
+      closeLibrary();
+      return;
+    }
+    if (isDirty) {
+      const proceed = window.confirm('Switch scripts without saving recent changes?');
+      if (!proceed) return;
+    }
+    const doc = documents.find((entry) => entry.id === docId);
+    if (!doc) return;
+    loadDocument(doc, { preserveCaret: false });
+    closeLibrary();
+    editor.focus();
+    showSnackbar(`Switched to ${doc.title?.trim() || 'Untitled script'}`);
+  }
+}
+
+function deleteDocument(id) {
+  const index = documents.findIndex((doc) => doc.id === id);
+  if (index === -1) return;
+  documents.splice(index, 1);
+  persistDocuments();
+  if (!documents.length) {
+    const doc = createDocument();
+    loadDocument(doc, { preserveCaret: false });
+    showSnackbar('Script deleted');
+    renderDocumentLibrary();
+    return;
+  }
+  if (currentDocumentId === id) {
+    const fallback = documents[index] || documents[index - 1] || documents[0];
+    loadDocument(fallback, { preserveCaret: false });
+  }
+  showSnackbar('Script deleted');
+  renderDocumentLibrary();
+}
+
+function renderDocumentLibrary() {
+  const queryRaw = librarySearch.value.trim();
+  const query = queryRaw.toLowerCase();
+  const sorted = [...documents].sort((a, b) => getDocumentSortValue(b) - getDocumentSortValue(a));
+  const filtered = query
+    ? sorted.filter((doc) => {
+        const haystack = `${doc.title} ${doc.content} ${doc.beats}`.toLowerCase();
+        return haystack.includes(query);
+      })
+    : sorted;
+
+  documentList.innerHTML = '';
+  const fragment = document.createDocumentFragment();
+
+  filtered.forEach((doc) => {
+    const item = document.createElement('li');
+    item.className = 'document-card';
+    item.dataset.documentId = doc.id;
+    if (doc.id === currentDocumentId) {
+      item.classList.add('active');
+    }
+
+    const bodyButton = document.createElement('button');
+    bodyButton.type = 'button';
+    bodyButton.className = 'document-card__body';
+    const title = document.createElement('span');
+    title.className = 'document-card__title';
+    title.textContent = doc.title?.trim() || 'Untitled script';
+    const meta = document.createElement('span');
+    meta.className = 'document-card__meta';
+    meta.textContent = formatDocumentTimestamp(doc.updatedAt);
+    const excerpt = document.createElement('span');
+    excerpt.className = 'document-card__excerpt';
+    excerpt.textContent = getDocumentExcerpt(doc);
+    bodyButton.append(title, meta, excerpt);
+
+    const actions = document.createElement('div');
+    actions.className = 'document-card__actions';
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'document-card__delete';
+    deleteButton.textContent = 'Delete';
+    actions.appendChild(deleteButton);
+
+    item.append(bodyButton, actions);
+    fragment.appendChild(item);
+  });
+
+  documentList.appendChild(fragment);
+  if (filtered.length === 0) {
+    if (queryRaw) {
+      emptyLibraryMessage.textContent = `No scripts match "${queryRaw}"`;
+    } else {
+      emptyLibraryMessage.textContent = 'Your autosaved scripts will appear here.';
+    }
+  } else {
+    emptyLibraryMessage.textContent = 'Your autosaved scripts will appear here.';
+  }
+  emptyLibraryMessage.hidden = filtered.length > 0;
+}
+
+function getDocumentSortValue(doc) {
+  const updated = doc.updatedAt ? Date.parse(doc.updatedAt) : 0;
+  if (Number.isFinite(updated) && updated) {
+    return updated;
+  }
+  const created = doc.createdAt ? Date.parse(doc.createdAt) : 0;
+  return Number.isFinite(created) ? created : 0;
+}
+
+function formatDocumentTimestamp(isoString) {
+  if (!isoString) return 'Never saved';
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return 'Never saved';
+  const diff = Date.now() - date.getTime();
+  if (diff < 45000) return 'Updated moments ago';
+  if (diff < 3600000) return `Updated ${Math.max(1, Math.round(diff / 60000))}m ago`;
+  if (diff < 86400000) return `Updated ${Math.round(diff / 3600000)}h ago`;
+  return `Updated ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}
+
+function getDocumentExcerpt(doc) {
+  const content = doc.content || '';
+  const beats = doc.beats || '';
+  const lines = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length) {
+    return lines[0].slice(0, 120);
+  }
+  const beatLines = beats.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (beatLines.length) {
+    return beatLines[0].slice(0, 120);
+  }
+  return 'No pages yet — start writing!';
+}
+
 function applyFormattingAndRefresh(options = {}) {
   const { preserveCaret = true } = options;
   const rawText = editor.value.replace(/\r\n?/g, '\n');
@@ -307,7 +598,7 @@ function applyFormattingAndRefresh(options = {}) {
   updateOutline(lineInfos);
   updateStats(lineInfos);
   updateInsights(lineInfos);
-  highlightFromCaret(editor.selectionStart);
+  highlightFromCaret(editor.selectionStart, { scrollPreview: false });
   scheduleAutosave();
 }
 
@@ -322,7 +613,7 @@ function formatScript(text) {
   for (let i = 0; i < lines.length; i += 1) {
     const raw = lines[i];
     const info = analyseLine(raw, previousType);
-    const exportLine = info.type === 'empty' ? '' : info.indent + info.content;
+    const exportLine = info.type === 'empty' ? '' : info.indent + info.content + info.trailingWhitespace;
     const startOriginal = offsetOriginal;
     const endOriginal = startOriginal + raw.length;
     const startFormatted = offsetFormatted;
@@ -337,6 +628,7 @@ function formatScript(text) {
       indentLength: info.indent.length,
       formattedContentLength: info.content.length,
       leadingWhitespace: info.leadingWhitespace,
+      trailingWhitespaceLength: info.trailingWhitespace.length,
       startOriginal,
       endOriginal,
       startFormatted,
@@ -364,12 +656,22 @@ function formatScript(text) {
 function analyseLine(rawLine, previousType) {
   const normalisedTabs = rawLine.replace(/\t/g, '    ');
   const trimmedRight = normalisedTabs.replace(/\s+$/u, '');
+  const trailingWhitespaceLength = normalisedTabs.length - trimmedRight.length;
+  const trailingWhitespace = trailingWhitespaceLength > 0 ? normalisedTabs.slice(-trailingWhitespaceLength) : '';
   const trimmedLeft = trimmedRight.replace(/^\s+/u, '');
   const leadingWhitespace = trimmedRight.length - trimmedLeft.length;
   const trimmed = trimmedLeft;
 
   if (!trimmed) {
-    return { type: 'empty', content: '', indent: INDENTS.empty, leadingWhitespace, location: null, timeOfDay: null };
+    return {
+      type: 'empty',
+      content: '',
+      indent: INDENTS.empty,
+      leadingWhitespace,
+      trailingWhitespace: '',
+      location: null,
+      timeOfDay: null,
+    };
   }
 
   if (isSceneHeading(trimmed)) {
@@ -380,6 +682,7 @@ function analyseLine(rawLine, previousType) {
       content,
       indent: INDENTS.scene,
       leadingWhitespace,
+      trailingWhitespace,
       location: sceneBits.location,
       timeOfDay: sceneBits.timeOfDay,
     };
@@ -391,6 +694,7 @@ function analyseLine(rawLine, previousType) {
       content: normaliseTransition(trimmed),
       indent: INDENTS.transition,
       leadingWhitespace,
+      trailingWhitespace,
       location: null,
       timeOfDay: null,
     };
@@ -402,6 +706,7 @@ function analyseLine(rawLine, previousType) {
       content: trimmed.replace(/^#+\s*/, '').toUpperCase(),
       indent: INDENTS.section,
       leadingWhitespace,
+      trailingWhitespace,
       location: null,
       timeOfDay: null,
     };
@@ -413,6 +718,7 @@ function analyseLine(rawLine, previousType) {
       content: normaliseCharacter(trimmed),
       indent: INDENTS.character,
       leadingWhitespace,
+      trailingWhitespace,
       location: null,
       timeOfDay: null,
     };
@@ -424,6 +730,7 @@ function analyseLine(rawLine, previousType) {
       content: normaliseParenthetical(trimmed),
       indent: INDENTS.parenthetical,
       leadingWhitespace,
+      trailingWhitespace,
       location: null,
       timeOfDay: null,
     };
@@ -435,6 +742,7 @@ function analyseLine(rawLine, previousType) {
       content: trimmed,
       indent: INDENTS.dialogue,
       leadingWhitespace,
+      trailingWhitespace,
       location: null,
       timeOfDay: null,
     };
@@ -446,6 +754,7 @@ function analyseLine(rawLine, previousType) {
       content: normaliseCharacter(trimmed),
       indent: INDENTS.character,
       leadingWhitespace,
+      trailingWhitespace,
       location: null,
       timeOfDay: null,
     };
@@ -457,6 +766,7 @@ function analyseLine(rawLine, previousType) {
       content: trimmed.replace(/^~\s*/, ''),
       indent: INDENTS.lyric,
       leadingWhitespace,
+      trailingWhitespace,
       location: null,
       timeOfDay: null,
     };
@@ -469,6 +779,7 @@ function analyseLine(rawLine, previousType) {
         content: normaliseParenthetical(trimmed),
         indent: INDENTS.parenthetical,
         leadingWhitespace,
+        trailingWhitespace,
         location: null,
         timeOfDay: null,
       };
@@ -481,6 +792,7 @@ function analyseLine(rawLine, previousType) {
       content: trimmed,
       indent: INDENTS.dialogue,
       leadingWhitespace,
+      trailingWhitespace,
       location: null,
       timeOfDay: null,
     };
@@ -491,6 +803,7 @@ function analyseLine(rawLine, previousType) {
     content: trimmed,
     indent: INDENTS.action,
     leadingWhitespace,
+    trailingWhitespace,
     location: null,
     timeOfDay: null,
   };
@@ -564,8 +877,14 @@ function mapCaretPosition(originalCaret, lineInfos, formattedText) {
       if (offsetInLine <= info.leadingWhitespace) {
         return info.startFormatted + Math.min(offsetInLine, info.indentLength);
       }
-      const trimmedOffset = Math.min(offsetInLine - info.leadingWhitespace, info.formattedContentLength);
-      return info.startFormatted + info.indentLength + trimmedOffset;
+      const afterIndent = offsetInLine - info.leadingWhitespace;
+      const contentLength = info.formattedContentLength;
+      const trailingLength = info.trailingWhitespaceLength || 0;
+      if (afterIndent <= contentLength) {
+        return info.startFormatted + info.indentLength + Math.min(afterIndent, contentLength);
+      }
+      const trailingOffset = Math.min(afterIndent - contentLength, trailingLength);
+      return info.startFormatted + info.indentLength + contentLength + trailingOffset;
     }
     if (originalCaret === info.endOriginal + 1 && info.hasBreak) {
       return info.endFormatted + 1;
@@ -755,11 +1074,12 @@ function shortenSceneTitle(title) {
   return title.replace(/\s+-\s+.*$/, '');
 }
 
-function highlightFromCaret(caret) {
+function highlightFromCaret(caret, options = {}) {
+  const { scrollPreview = false } = options;
   const lineInfos = formattingResult.lineInfos;
   if (!lineInfos.length) return;
   const lineIndex = getLineIndexFromCaret(caret, lineInfos);
-  highlightPreviewLine(lineIndex);
+  highlightPreviewLine(lineIndex, { scroll: scrollPreview });
   highlightOutlineScene(lineIndex, lineInfos);
 }
 
@@ -773,12 +1093,15 @@ function getLineIndexFromCaret(caret, lineInfos) {
   return lineInfos.length - 1;
 }
 
-function highlightPreviewLine(lineIndex) {
+function highlightPreviewLine(lineIndex, options = {}) {
+  const { scroll = false } = options;
   previewContainer.querySelectorAll('.script-line.active').forEach((node) => node.classList.remove('active'));
   const target = previewContainer.querySelector(`.script-line[data-line-index="${lineIndex}"]`);
   if (target) {
     target.classList.add('active');
-    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (scroll) {
+      target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
   }
 }
 
@@ -812,6 +1135,7 @@ function countWords(text) {
 
 function scheduleAutosave() {
   markDirty();
+  if (!currentDocumentId) return;
   if (autosaveTimer) {
     clearTimeout(autosaveTimer);
   }
@@ -823,17 +1147,20 @@ function markDirty() {
 }
 
 function performAutosave() {
-  const payload = {
+  if (!currentDocumentId) return;
+  const now = new Date();
+  const updates = {
     title: titleInput.value,
     content: formattingResult.formattedText,
     beats: beatNotes.value,
-    updatedAt: new Date().toISOString(),
+    updatedAt: now.toISOString(),
   };
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    lastSavedAt = new Date(payload.updatedAt);
+    upsertDocument(currentDocumentId, updates);
+    lastSavedAt = now;
     isDirty = false;
     updateAutosaveStatus();
+    renderDocumentLibrary();
   } catch (error) {
     console.warn('Autosave failed', error);
   }
@@ -856,22 +1183,130 @@ function updateAutosaveStatus() {
   }
 }
 
-function loadFromStorage() {
+function bootstrapDocuments() {
+  documents = loadDocumentsFromStorage();
+  if (!documents.length) {
+    createDocument();
+    documents = loadDocumentsFromStorage();
+  }
+  const storedActiveId = localStorage.getItem(ACTIVE_DOCUMENT_KEY);
+  const target = documents.find((doc) => doc.id === storedActiveId) || documents[0];
+  loadDocument(target, { preserveCaret: false });
+}
+
+function loadDocumentsFromStorage() {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return;
-    const payload = JSON.parse(stored);
-    titleInput.value = payload.title || '';
-    editor.value = (payload.content || '').replace(/\r\n?/g, '\n');
-    beatNotes.value = payload.beats || '';
-    lastSavedAt = payload.updatedAt ? new Date(payload.updatedAt) : null;
+    const stored = localStorage.getItem(DOCUMENTS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((doc) => doc && (doc.id || doc.createdAt))
+          .map((doc) => ({
+            id: doc.id || generateDocumentId(),
+            title: doc.title || '',
+            content: (doc.content || '').replace(/\r\n?/g, '\n'),
+            beats: doc.beats || '',
+            createdAt: doc.createdAt || doc.updatedAt || new Date().toISOString(),
+            updatedAt: doc.updatedAt || doc.createdAt || new Date().toISOString(),
+          }));
+      }
+    }
   } catch (error) {
-    console.warn('Failed to load stored draft', error);
+    console.warn('Failed to load document library', error);
+  }
+
+  try {
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (!legacy) return [];
+    const payload = JSON.parse(legacy);
+    const timestamp = payload.updatedAt || new Date().toISOString();
+    const migrated = {
+      id: generateDocumentId(),
+      title: payload.title || '',
+      content: (payload.content || '').replace(/\r\n?/g, '\n'),
+      beats: payload.beats || '',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    localStorage.setItem(DOCUMENTS_KEY, JSON.stringify([migrated]));
+    return [migrated];
+  } catch (error) {
+    console.warn('Failed to migrate legacy draft', error);
+  }
+
+  return [];
+}
+
+function persistDocuments() {
+  try {
+    localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(documents));
+  } catch (error) {
+    console.warn('Failed to store documents', error);
   }
 }
 
+function upsertDocument(id, updates) {
+  const index = documents.findIndex((doc) => doc.id === id);
+  if (index === -1) return;
+  documents[index] = {
+    ...documents[index],
+    ...updates,
+  };
+  persistDocuments();
+  localStorage.setItem(ACTIVE_DOCUMENT_KEY, id);
+}
+
+function createDocument(initial = {}) {
+  const nowIso = new Date().toISOString();
+  const doc = {
+    id: generateDocumentId(),
+    title: initial.title || '',
+    content: (initial.content || '').replace(/\r\n?/g, '\n'),
+    beats: initial.beats || '',
+    createdAt: initial.createdAt || nowIso,
+    updatedAt: initial.updatedAt || nowIso,
+  };
+  documents.push(doc);
+  persistDocuments();
+  renderDocumentLibrary();
+  return doc;
+}
+
+function loadDocument(doc, options = {}) {
+  if (!doc) return;
+  const { preserveCaret = false } = options;
+  currentDocumentId = doc.id;
+  localStorage.setItem(ACTIVE_DOCUMENT_KEY, currentDocumentId);
+  titleInput.value = doc.title || '';
+  editor.value = (doc.content || '').replace(/\r\n?/g, '\n');
+  beatNotes.value = doc.beats || '';
+  lastSavedAt = doc.updatedAt ? new Date(doc.updatedAt) : null;
+  isDirty = false;
+  resetShareLink();
+  updateAutosaveStatus();
+  const shouldSeed = !doc.content && documents.length === 1 && doc.createdAt === doc.updatedAt;
+  if (shouldSeed) {
+    seedWelcomePage();
+  }
+  applyFormattingAndRefresh({ preserveCaret });
+  renderDocumentLibrary();
+}
+
+function resetShareLink() {
+  shareLinkInput.value = '';
+  shareModalLink.value = '';
+}
+
 function seedWelcomePage() {
-  const template = `INT. DREAMSCAPE - NIGHT\n\nA swirling cosmic void. Possibilities everywhere.\n\nNARRATOR\nWelcome to Scriptius. Start writing your story...\n`;
+  const template = `INT. DREAMSCAPE - NIGHT
+
+A swirling cosmic void. Possibilities everywhere.
+
+NARRATOR
+Welcome to Scriptius. Start writing your story...
+`;
   editor.value = template;
 }
 
@@ -882,9 +1317,13 @@ function loadFromShareLink() {
   try {
     const payload = decodeSharePayload(encoded);
     if (payload?.content) {
-      titleInput.value = payload.title || 'Shared draft';
-      editor.value = payload.content.replace(/\r\n?/g, '\n');
-      beatNotes.value = payload.beats || '';
+      const doc = createDocument({
+        title: payload.title || 'Shared draft',
+        content: payload.content,
+        beats: payload.beats || '',
+        updatedAt: new Date().toISOString(),
+      });
+      loadDocument(doc, { preserveCaret: false });
       showSnackbar('Loaded shared draft');
       history.replaceState(null, document.title, window.location.pathname + window.location.search);
     }
@@ -899,13 +1338,10 @@ function handleNewDocument() {
     const proceed = window.confirm('Start a new script? Unsaved changes will be lost.');
     if (!proceed) return;
   }
-  titleInput.value = '';
-  editor.value = '';
-  beatNotes.value = '';
-  lastSavedAt = null;
-  isDirty = false;
-  updateAutosaveStatus();
-  applyFormattingAndRefresh({ preserveCaret: false });
+  const doc = createDocument();
+  loadDocument(doc, { preserveCaret: false });
+  editor.focus();
+  showSnackbar('Started a new script');
 }
 
 function handleImportFile(event) {
@@ -990,6 +1426,14 @@ function decodeSharePayload(encoded) {
   return JSON.parse(json);
 }
 
+function generateDocumentId() {
+  const cryptoObj = globalThis.crypto;
+  if (cryptoObj?.randomUUID) {
+    return cryptoObj.randomUUID();
+  }
+  return `doc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 async function handleCopyShareLink() {
   const link = ensureShareLink();
   try {
@@ -1032,7 +1476,7 @@ function focusLine(lineIndex) {
   const caret = info.startFormatted;
   editor.focus();
   editor.setSelectionRange(caret, caret);
-  highlightFromCaret(caret);
+  highlightFromCaret(caret, { scrollPreview: true });
 }
 
 window.addEventListener('beforeunload', (event) => {
@@ -1040,4 +1484,3 @@ window.addEventListener('beforeunload', (event) => {
   event.preventDefault();
   event.returnValue = '';
 });
-
