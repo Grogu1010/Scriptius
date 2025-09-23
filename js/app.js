@@ -31,6 +31,7 @@ const focusModeToggle = document.getElementById('focusModeToggle');
 const statsToggle = document.getElementById('statsToggle');
 const themeToggle = document.getElementById('themeToggle');
 const toolbar = document.querySelector('.toolbar');
+
 const libraryBtn = document.getElementById('libraryBtn');
 const libraryDrawer = document.getElementById('libraryDrawer');
 const closeLibraryBtn = document.getElementById('closeLibraryBtn');
@@ -572,6 +573,7 @@ function getDocumentExcerpt(doc) {
   }
   return 'No pages yet — start writing!';
 }
+
 function applyFormattingAndRefresh(options = {}) {
   const { preserveCaret = true } = options;
   const rawText = editor.value.replace(/\r\n?/g, '\n');
@@ -1298,7 +1300,13 @@ function resetShareLink() {
 }
 
 function seedWelcomePage() {
-  const template = `INT. DREAMSCAPE - NIGHT\n\nA swirling cosmic void. Possibilities everywhere.\n\nNARRATOR\nWelcome to Scriptius. Start writing your story...\n`;
+  const template = `INT. DREAMSCAPE - NIGHT
+
+A swirling cosmic void. Possibilities everywhere.
+
+NARRATOR
+Welcome to Scriptius. Start writing your story...
+`;
   editor.value = template;
 }
 
@@ -1476,4 +1484,3 @@ window.addEventListener('beforeunload', (event) => {
   event.preventDefault();
   event.returnValue = '';
 });
-
