@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scriptius &mdash; Screenwriting Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Courier+Prime:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">✶</div>
+        <div class="title-group">
+          <span class="brand-title">Scriptius</span>
+          <span class="brand-tagline">Focused screenwriting workspace</span>
+        </div>
+      </div>
+      <div class="document-meta">
+        <label for="scriptTitle" class="sr-only">Script title</label>
+        <input
+          id="scriptTitle"
+          class="title-input"
+          type="text"
+          placeholder="Untitled Script"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <div class="meta-actions">
+          <button type="button" class="ghost" id="newDocumentBtn" title="Start a fresh document">
+            New
+          </button>
+          <button type="button" class="ghost" id="importDocumentBtn" title="Import Fountain or text">
+            Import
+          </button>
+          <input type="file" id="filePicker" accept=".fountain,.txt,.md,.fdx" hidden />
+          <div class="menu-group">
+            <button type="button" class="ghost" id="exportMenuBtn" aria-haspopup="true" aria-expanded="false">
+              Export ▾
+            </button>
+            <ul class="menu" id="exportMenu" role="menu">
+              <li role="menuitem">
+                <button type="button" id="downloadFountainBtn">Download Fountain</button>
+              </li>
+              <li role="menuitem">
+                <button type="button" id="downloadTxtBtn">Download Text</button>
+              </li>
+              <li role="menuitem">
+                <button type="button" id="printBtn">Print / PDF</button>
+              </li>
+            </ul>
+          </div>
+          <button type="button" class="ghost" id="shareBtn" title="Create a shareable link">
+            Share
+          </button>
+          <button type="button" class="ghost" id="themeToggle" title="Toggle theme">
+            🌗
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="panel outline" aria-label="Scene outline">
+        <div class="panel-header">
+          <h2>Outline</h2>
+          <div class="panel-subtext" id="sceneCount">0 scenes</div>
+        </div>
+        <ol class="scene-list" id="sceneList"></ol>
+        <div class="panel-section">
+          <h3>Quick beats</h3>
+          <textarea id="beatNotes" placeholder="Jot down beats, reminders or TODOs…"></textarea>
+        </div>
+      </aside>
+
+      <section class="panel editor" aria-label="Script editor">
+        <div class="toolbar" role="toolbar" aria-label="Insert elements">
+          <button type="button" data-snippet="INT. " class="toolbar-btn">Scene</button>
+          <button type="button" data-snippet="EXT. " class="toolbar-btn">Exterior</button>
+          <button type="button" data-snippet="CHARACTER" class="toolbar-btn">Character</button>
+          <button type="button" data-snippet="(CONT'D)" class="toolbar-btn">Parenthetical</button>
+          <button type="button" data-snippet="CUT TO:" class="toolbar-btn">Transition</button>
+          <span class="toolbar-divider"></span>
+          <button type="button" id="focusModeToggle" class="toolbar-btn">Focus mode</button>
+          <button type="button" id="statsToggle" class="toolbar-btn">Show stats</button>
+        </div>
+
+        <label for="scriptEditor" class="sr-only">Script editor</label>
+        <textarea
+          id="scriptEditor"
+          spellcheck="false"
+          autocomplete="off"
+          autocapitalize="none"
+          placeholder="Write your screenplay here…"
+        ></textarea>
+        <div class="status-bar">
+          <div class="status-left">
+            <span id="autosaveStatus">Draft not saved</span>
+          </div>
+          <div class="status-right" id="statusMetrics">
+            <span id="wordStat">0 words</span>
+            <span id="sceneStat">0 scenes</span>
+            <span id="runtimeStat">Runtime: 0 min</span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel preview" aria-label="Preview and insights">
+        <div class="panel-header">
+          <h2>Formatted pages</h2>
+          <div class="panel-subtext" id="pageIndicator">Page 1 of 1</div>
+        </div>
+        <div class="preview-scroll" id="previewScroller">
+          <div id="scriptPreview" aria-live="polite"></div>
+        </div>
+        <section class="panel-section">
+          <h3>Insights</h3>
+          <ul class="insights" id="insightsList"></ul>
+        </section>
+        <section class="panel-section">
+          <h3>Share link</h3>
+          <div class="share-row">
+            <input type="text" id="shareLink" readonly placeholder="Generate link via Share" />
+            <button type="button" id="copyShareLinkBtn" class="ghost">Copy</button>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <div class="modal" id="shareModal" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
+      <div class="modal-content">
+        <header class="modal-header">
+          <h2 id="shareTitle">Share your script</h2>
+          <button type="button" class="ghost" id="closeShareModal" aria-label="Close share dialog">✕</button>
+        </header>
+        <p>
+          Scriptius generates a secure, local link that contains your script content. Send it to collaborators so they
+          can open the same draft instantly.
+        </p>
+        <div class="share-actions">
+          <input type="text" id="shareModalLink" readonly />
+          <button type="button" id="shareModalCopy" class="primary">Copy link</button>
+          <button type="button" id="nativeShareBtn" class="ghost">Native share</button>
+        </div>
+      </div>
+    </div>
+
+    <template id="sceneListItemTemplate">
+      <li>
+        <button type="button" class="scene-link">
+          <span class="scene-number"></span>
+          <span class="scene-title"></span>
+          <span class="scene-meta"></span>
+        </button>
+      </li>
+    </template>
+
+    <template id="insightItemTemplate">
+      <li class="insight-item">
+        <span class="insight-label"></span>
+        <span class="insight-value"></span>
+      </li>
+    </template>
+
+    <div id="snackbar" role="status" aria-live="polite"></div>
+
+    <script src="js/app.js" type="module"></script>
+  </body>
+</html>
