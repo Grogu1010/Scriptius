@@ -47,12 +47,15 @@ const viewMenu = document.getElementById('viewMenu');
 const viewMenuBtn = document.getElementById('viewMenuBtn');
 const toggleOutlineBtn = document.getElementById('toggleOutlineBtn');
 const togglePreviewBtn = document.getElementById('togglePreviewBtn');
+const writingPanel = document.querySelector('.writing-panel');
+const viewModeButtons = document.querySelectorAll('[data-view-mode]');
 
 const DOCUMENTS_KEY = 'scriptius-documents';
 const ACTIVE_DOCUMENT_KEY = 'scriptius-active-document';
 const LEGACY_STORAGE_KEY = 'scriptius-document';
 const THEME_KEY = 'scriptius-theme';
 const LAYOUT_KEY = 'scriptius-layout';
+const VIEW_MODE_KEY = 'scriptius-view-mode';
 const AUTOSAVE_DELAY = 800;
 const LINES_PER_PAGE = 55;
 const PROGRESS_PAGE_GOAL = 110;
@@ -85,6 +88,7 @@ let isDirty = false;
 let documents = [];
 let currentDocumentId = null;
 let libraryPreviouslyFocused = null;
+let currentViewMode = writingPanel?.dataset.viewMode || 'editor';
 const previewState = {
   lineToPage: [],
   pageCount: 1,
@@ -95,6 +99,7 @@ init();
 function init() {
   applyStoredTheme();
   applyStoredLayout();
+  applyStoredViewMode();
   attachEventListeners();
   bootstrapDocuments();
   loadFromShareLink();
@@ -244,6 +249,12 @@ function attachEventListeners() {
     if (!lineEl) return;
     const lineIndex = Number(lineEl.dataset.lineIndex);
     focusLine(lineIndex);
+  });
+
+  viewModeButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      setViewMode(button.dataset.viewMode);
+    });
   });
 
   document.addEventListener('keydown', (event) => {
@@ -402,9 +413,60 @@ function updateViewMenuLabels() {
   toggleOutlineBtn.dataset.state = '✓';
   togglePreviewBtn.dataset.state = '✓';
   toggleOutlineBtn.textContent = outlineHidden ? 'Show outline' : 'Hide outline';
-  togglePreviewBtn.textContent = previewHidden ? 'Show preview' : 'Hide preview';
+  togglePreviewBtn.textContent = previewHidden ? 'Show right column' : 'Hide right column';
   toggleOutlineBtn.setAttribute('aria-pressed', String(!outlineHidden));
   togglePreviewBtn.setAttribute('aria-pressed', String(!previewHidden));
+}
+
+function setViewMode(mode, { persist = true } = {}) {
+  if (!writingPanel) return;
+  const nextMode = mode === 'formatted' ? 'formatted' : 'editor';
+  currentViewMode = nextMode;
+  writingPanel.dataset.viewMode = nextMode;
+  viewModeButtons.forEach((button) => {
+    const isActive = button.dataset.viewMode === nextMode;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  });
+
+  if (nextMode === 'formatted') {
+    requestAnimationFrame(() => {
+      editor.focus({ preventScroll: true });
+      highlightFromCaret(editor.selectionStart, { scrollPreview: true });
+    });
+  } else {
+    requestAnimationFrame(() => {
+      editor.focus();
+    });
+  }
+
+  if (persist) {
+    persistViewMode();
+  }
+}
+
+function applyStoredViewMode() {
+  if (!writingPanel) return;
+  try {
+    const stored = localStorage.getItem(VIEW_MODE_KEY);
+    if (stored === 'formatted' || stored === 'editor') {
+      setViewMode(stored, { persist: false });
+    } else {
+      setViewMode(currentViewMode, { persist: false });
+    }
+  } catch (error) {
+    console.warn('Failed to load view mode', error);
+    setViewMode(currentViewMode, { persist: false });
+  }
+}
+
+function persistViewMode() {
+  if (!writingPanel) return;
+  try {
+    localStorage.setItem(VIEW_MODE_KEY, currentViewMode);
+  } catch (error) {
+    console.warn('Failed to store view mode', error);
+  }
 }
 
 function openLibrary() {

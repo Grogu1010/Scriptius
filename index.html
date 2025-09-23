@@ -68,7 +68,7 @@
                   <button type="button" id="toggleOutlineBtn" data-view-target="outline">Hide outline</button>
                 </li>
                 <li role="menuitem">
-                  <button type="button" id="togglePreviewBtn" data-view-target="preview">Hide preview</button>
+                  <button type="button" id="togglePreviewBtn" data-view-target="preview">Hide right column</button>
                 </li>
               </ul>
             </div>
@@ -155,97 +155,113 @@
       </header>
 
       <main class="workspace">
-        <aside class="panel outline" aria-label="Scene outline">
-          <div class="panel-header">
+        <section class="panel writing-panel" aria-label="Script workspace" data-view-mode="editor">
+          <header class="panel-header writing-panel__header">
             <div class="panel-heading">
-              <h2>Outline</h2>
-              <p class="panel-description">Collect beats and jump to any scene instantly.</p>
-            </div>
-            <div class="panel-subtext" id="sceneCount">0 scenes</div>
-          </div>
-          <ol class="scene-list" id="sceneList"></ol>
-          <div class="panel-section">
-            <div class="panel-section-heading">
-              <h3>Quick beats</h3>
-              <span class="panel-hint">Scratchpad for ideas, beats and TODOs.</span>
-            </div>
-            <textarea id="beatNotes" placeholder="Jot down beats, reminders or TODOs…"></textarea>
-          </div>
-        </aside>
-
-        <section class="panel editor" aria-label="Script editor">
-          <div class="panel-header">
-            <div class="panel-heading">
-              <h2>Script draft</h2>
-              <p class="panel-description">Use the shortcuts below to keep writing without breaking flow.</p>
-            </div>
-          </div>
-          <div class="toolbar" role="toolbar" aria-label="Insert elements">
-            <div class="toolbar-snippets">
-              <button type="button" data-snippet="INT. " class="toolbar-btn">Scene</button>
-              <button type="button" data-snippet="EXT. " class="toolbar-btn">Exterior</button>
-              <button type="button" data-snippet="CHARACTER" class="toolbar-btn">Character</button>
-              <button type="button" data-snippet="(CONT'D)" class="toolbar-btn">Parenthetical</button>
-              <button type="button" data-snippet="CUT TO:" class="toolbar-btn">Transition</button>
-            </div>
-            <div class="toolbar-quick-actions">
-              <button type="button" id="focusModeToggle" class="toolbar-chip">Focus mode</button>
-              <button type="button" id="statsToggle" class="toolbar-chip">Show stats</button>
-            </div>
-          </div>
-
-          <label for="scriptEditor" class="sr-only">Script editor</label>
-          <textarea
-            id="scriptEditor"
-            spellcheck="false"
-            autocomplete="off"
-            autocapitalize="none"
-            placeholder="Write your screenplay here…"
-          ></textarea>
-          <div class="status-bar">
-            <div class="status-left">
-              <span class="status-tip-label">Flow tip</span>
-              <p class="status-tip">
-                Press <kbd>Tab</kbd> to align dialogue instantly or use the snippet keys to insert elements.
+              <h2>Write &amp; preview</h2>
+              <p class="panel-description writing-panel__description">
+                Click a button above to switch between Main Editor and Formatted Pages — huge update: you can edit it from the formatted pages bit while this left panel stays visible and the tools on the right scroll.
               </p>
             </div>
-            <div class="status-right">
-              <span class="hint-chip">⌘ + S exports a Fountain copy</span>
-              <span class="hint-chip">Use Outline to jump between beats</span>
+            <div class="writing-panel__controls">
+              <div class="view-switch" role="group" aria-label="Choose editor view">
+                <button type="button" class="ghost view-switch__btn is-active" data-view-mode="editor" aria-pressed="true">Main Editor</button>
+                <button type="button" class="ghost view-switch__btn" data-view-mode="formatted" aria-pressed="false">Formatted Pages</button>
+              </div>
+              <div class="panel-subtext writing-panel__pages" id="pageIndicator">Page 1 of 1</div>
+            </div>
+          </header>
+          <div class="writing-content">
+            <div class="toolbar" role="toolbar" aria-label="Insert elements">
+              <div class="toolbar-snippets">
+                <button type="button" data-snippet="INT. " class="toolbar-btn">Scene</button>
+                <button type="button" data-snippet="EXT. " class="toolbar-btn">Exterior</button>
+                <button type="button" data-snippet="CHARACTER" class="toolbar-btn">Character</button>
+                <button type="button" data-snippet="(CONT'D)" class="toolbar-btn">Parenthetical</button>
+                <button type="button" data-snippet="CUT TO:" class="toolbar-btn">Transition</button>
+              </div>
+              <div class="toolbar-quick-actions">
+                <button type="button" id="focusModeToggle" class="toolbar-chip">Focus mode</button>
+                <button type="button" id="statsToggle" class="toolbar-chip">Show stats</button>
+              </div>
+            </div>
+
+            <div class="writing-stage">
+              <label for="scriptEditor" class="sr-only">Script editor</label>
+              <textarea
+                id="scriptEditor"
+                spellcheck="false"
+                autocomplete="off"
+                autocapitalize="none"
+                placeholder="Write your screenplay here…"
+              ></textarea>
+              <div class="formatted-stage" aria-live="polite">
+                <div class="page-canvas">
+                  <div class="preview-scroll" id="previewScroller">
+                    <div id="scriptPreview" aria-live="polite"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="status-bar">
+              <div class="status-left">
+                <span class="status-tip-label">Flow tip</span>
+                <p class="status-tip">
+                  Press <kbd>Tab</kbd> to align dialogue instantly or use the snippet keys to insert elements.
+                </p>
+              </div>
+              <div class="status-right">
+                <span class="hint-chip">⌘ + S exports a Fountain copy</span>
+                <span class="hint-chip">Use Outline to jump between beats</span>
+              </div>
             </div>
           </div>
         </section>
 
-        <aside class="panel preview" aria-label="Preview and insights">
-          <div class="panel-header">
-            <div class="panel-heading">
-              <h2>Formatted pages</h2>
-              <p class="panel-description">
-                Review how pages break while staying perfectly aligned with the editor.
-              </p>
-            </div>
-            <div class="panel-subtext" id="pageIndicator">Page 1 of 1</div>
+        <aside class="side-rail" aria-label="Outline and tools">
+          <div class="side-rail__scroll">
+            <section class="panel outline" aria-label="Scene outline">
+              <div class="panel-header">
+                <div class="panel-heading">
+                  <h2>Outline</h2>
+                  <p class="panel-description">Collect beats and jump to any scene instantly.</p>
+                </div>
+                <div class="panel-subtext" id="sceneCount">0 scenes</div>
+              </div>
+              <ol class="scene-list" id="sceneList"></ol>
+              <div class="panel-section">
+                <div class="panel-section-heading">
+                  <h3>Quick beats</h3>
+                  <span class="panel-hint">Scratchpad for ideas, beats and TODOs.</span>
+                </div>
+                <textarea id="beatNotes" placeholder="Jot down beats, reminders or TODOs…"></textarea>
+              </div>
+            </section>
+
+            <section class="panel side-card insights-card" aria-label="Insights">
+              <div class="panel-section">
+                <div class="panel-section-heading">
+                  <h3>Insights</h3>
+                  <span class="panel-hint">Track balance across characters, action and dialogue.</span>
+                </div>
+                <ul class="insights" id="insightsList"></ul>
+              </div>
+            </section>
+
+            <section class="panel side-card share-card" aria-label="Share link">
+              <div class="panel-section">
+                <div class="panel-section-heading">
+                  <h3>Share link</h3>
+                  <span class="panel-hint">Generate a local link when you're ready for feedback.</span>
+                </div>
+                <div class="share-row">
+                  <input type="text" id="shareLink" readonly placeholder="Generate link via Share" />
+                  <button type="button" id="copyShareLinkBtn" class="ghost">Copy</button>
+                </div>
+              </div>
+            </section>
           </div>
-          <div class="preview-scroll" id="previewScroller">
-            <div id="scriptPreview" aria-live="polite"></div>
-          </div>
-          <section class="panel-section insights-section">
-            <div class="panel-section-heading">
-              <h3>Insights</h3>
-              <span class="panel-hint">Track balance across characters, action and dialogue.</span>
-            </div>
-            <ul class="insights" id="insightsList"></ul>
-          </section>
-          <section class="panel-section share-section">
-            <div class="panel-section-heading">
-              <h3>Share link</h3>
-              <span class="panel-hint">Generate a local link when you're ready for feedback.</span>
-            </div>
-            <div class="share-row">
-              <input type="text" id="shareLink" readonly placeholder="Generate link via Share" />
-              <button type="button" id="copyShareLinkBtn" class="ghost">Copy</button>
-            </div>
-          </section>
         </aside>
       </main>
 
