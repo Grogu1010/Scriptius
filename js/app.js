@@ -1,4 +1,5 @@
 const editor = document.getElementById('scriptEditor');
+const writingStage = document.querySelector('.writing-stage');
 const titleInput = document.getElementById('scriptTitle');
 const beatNotes = document.getElementById('beatNotes');
 const autosaveStatus = document.getElementById('autosaveStatus');
@@ -115,6 +116,44 @@ const suggestionState = {
   context: null,
 };
 
+const CARET_MEASURE_PROPERTIES = Object.freeze([
+  'direction',
+  'boxSizing',
+  'width',
+  'height',
+  'overflowX',
+  'overflowY',
+  'borderTopWidth',
+  'borderRightWidth',
+  'borderBottomWidth',
+  'borderLeftWidth',
+  'borderStyle',
+  'paddingTop',
+  'paddingRight',
+  'paddingBottom',
+  'paddingLeft',
+  'fontStyle',
+  'fontVariant',
+  'fontWeight',
+  'fontStretch',
+  'fontSize',
+  'fontSizeAdjust',
+  'lineHeight',
+  'fontFamily',
+  'textAlign',
+  'textTransform',
+  'textIndent',
+  'textDecoration',
+  'letterSpacing',
+  'wordSpacing',
+  'tabSize',
+  'MozTabSize',
+]);
+
+let caretMirrorDiv = null;
+let caretMirrorSpan = null;
+let suggestionPositionFrame = null;
+
 const INDENTS = Object.freeze({
   action: '',
   scene: '',
@@ -176,12 +215,15 @@ function attachEventListeners() {
   editor.addEventListener('focus', () => {
     requestAnimationFrame(updateSuggestionPanel);
   });
+  editor.addEventListener('scroll', handleEditorScroll);
 
   document.addEventListener('selectionchange', () => {
     if (document.activeElement === editor) {
       handleCaretChange();
     }
   });
+
+  window.addEventListener('resize', handleWindowResize);
 
   if (suggestionList) {
     suggestionList.addEventListener('mousedown', handleSuggestionPointerDown);
@@ -528,6 +570,7 @@ function renderSuggestionList(items, context) {
   });
   suggestionList.appendChild(fragment);
   setActiveSuggestion(suggestionState.activeIndex);
+  scheduleSuggestionPositionUpdate();
 }
 
 function setActiveSuggestion(index) {
@@ -554,8 +597,140 @@ function setActiveSuggestion(index) {
     option.setAttribute('aria-selected', String(isActive));
     if (isActive) {
       suggestionList.setAttribute('aria-activedescendant', option.id);
+      option.scrollIntoView({ block: 'nearest' });
     }
   });
+}
+
+function scheduleSuggestionPositionUpdate() {
+  if (!suggestionPanel || suggestionPanel.hidden) return;
+  if (suggestionPositionFrame) {
+    cancelAnimationFrame(suggestionPositionFrame);
+  }
+  suggestionPositionFrame = requestAnimationFrame(() => {
+    suggestionPositionFrame = null;
+    positionSuggestionPanel();
+  });
+}
+
+function positionSuggestionPanel() {
+  if (!suggestionPanel || suggestionPanel.hidden) return;
+  const anchor = getSuggestionAnchorRect();
+  if (!anchor) return;
+
+  const { top, left, height, containerRect } = anchor;
+  const edgePadding = 12;
+  const containerHeight = containerRect?.height ?? 0;
+  const containerWidth = containerRect?.width ?? 0;
+  const panelRect = suggestionPanel.getBoundingClientRect();
+  const panelWidth = panelRect.width || suggestionPanel.offsetWidth || 0;
+  const panelHeight = panelRect.height || suggestionPanel.offsetHeight || 0;
+
+  let computedLeft = left;
+  if (containerWidth > 0 && panelWidth > 0) {
+    const maxLeft = Math.max(edgePadding, containerWidth - edgePadding - panelWidth);
+    const minLeft = edgePadding;
+    computedLeft = Math.min(Math.max(computedLeft, minLeft), maxLeft);
+  } else {
+    computedLeft = Math.max(edgePadding, computedLeft);
+  }
+
+  let computedTop = top + height + 8;
+  if (containerHeight > 0 && panelHeight > 0) {
+    const maxTop = Math.max(edgePadding, containerHeight - edgePadding - panelHeight);
+    if (computedTop > maxTop && top - panelHeight - 8 >= edgePadding) {
+      computedTop = top - panelHeight - 8;
+    }
+    computedTop = Math.min(Math.max(computedTop, edgePadding), maxTop);
+  } else {
+    computedTop = Math.max(edgePadding, computedTop);
+  }
+
+  suggestionPanel.style.top = `${computedTop}px`;
+  suggestionPanel.style.left = `${computedLeft}px`;
+}
+
+function getSuggestionAnchorRect() {
+  if (!editor) return null;
+  const caret = editor.selectionStart;
+  if (!Number.isInteger(caret)) return null;
+  const metrics = measureEditorCaret(caret);
+  if (!metrics) return null;
+
+  const container =
+    suggestionPanel?.offsetParent || writingStage || editor.parentElement || document.body;
+  if (!container) return null;
+
+  const containerRect = container.getBoundingClientRect();
+  const editorRect = editor.getBoundingClientRect();
+  const relativeTop = editorRect.top - containerRect.top + metrics.top - editor.scrollTop;
+  const relativeLeft = editorRect.left - containerRect.left + metrics.left - editor.scrollLeft;
+
+  return {
+    top: relativeTop,
+    left: relativeLeft,
+    height: metrics.height,
+    containerRect,
+  };
+}
+
+function measureEditorCaret(position) {
+  if (!editor || !Number.isInteger(position)) return null;
+  const doc = editor.ownerDocument;
+  if (!doc) return null;
+  const view = doc.defaultView || window;
+  const computed = view.getComputedStyle(editor);
+
+  if (!caretMirrorDiv) {
+    caretMirrorDiv = doc.createElement('div');
+    caretMirrorDiv.setAttribute('aria-hidden', 'true');
+  }
+  if (!caretMirrorSpan) {
+    caretMirrorSpan = doc.createElement('span');
+  }
+
+  const div = caretMirrorDiv;
+  const span = caretMirrorSpan;
+  const style = div.style;
+
+  style.whiteSpace = 'pre-wrap';
+  style.wordWrap = 'break-word';
+  style.position = 'absolute';
+  style.visibility = 'hidden';
+  style.top = '0';
+  style.left = '-9999px';
+
+  CARET_MEASURE_PROPERTIES.forEach((prop) => {
+    if (prop === 'lineHeight' && editor.nodeName === 'INPUT') {
+      style.lineHeight = computed.height;
+    } else {
+      style[prop] = computed[prop];
+    }
+  });
+
+  const value = editor.value || '';
+  div.textContent = value.slice(0, position);
+  span.textContent = value.slice(position) || '.';
+  div.appendChild(span);
+  doc.body.appendChild(div);
+
+  const borderTop = parseInt(computed.borderTopWidth, 10) || 0;
+  const borderLeft = parseInt(computed.borderLeftWidth, 10) || 0;
+  const caretTop = span.offsetTop + borderTop;
+  const caretLeft = span.offsetLeft + borderLeft;
+  let caretHeight = parseInt(computed.lineHeight, 10);
+  if (!Number.isFinite(caretHeight) || caretHeight <= 0) {
+    const fontSize = parseInt(computed.fontSize, 10) || 0;
+    caretHeight = span.offsetHeight || fontSize || 0;
+  }
+
+  doc.body.removeChild(div);
+
+  return {
+    top: caretTop,
+    left: caretLeft,
+    height: caretHeight,
+  };
 }
 
 function moveActiveSuggestion(delta) {
@@ -687,6 +862,11 @@ function handleSuggestionKeydown(event) {
     moveActiveSuggestion(-1);
     return true;
   }
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    applyActiveSuggestion();
+    return true;
+  }
   if (event.key === 'Tab') {
     event.preventDefault();
     applyActiveSuggestion();
@@ -702,6 +882,16 @@ function handleSuggestionKeydown(event) {
 
 function isSuggestionOpen() {
   return Boolean(suggestionState.items.length && suggestionPanel && !suggestionPanel.hidden);
+}
+
+function handleEditorScroll() {
+  if (!isSuggestionOpen()) return;
+  scheduleSuggestionPositionUpdate();
+}
+
+function handleWindowResize() {
+  if (!isSuggestionOpen()) return;
+  scheduleSuggestionPositionUpdate();
 }
 
 function handleSuggestionPointerDown(event) {
@@ -724,11 +914,18 @@ function handleSuggestionHover(event) {
 
 function closeSuggestionPanel() {
   if (!suggestionPanel || !suggestionList || !suggestionLabel) return;
+  if (suggestionPositionFrame) {
+    cancelAnimationFrame(suggestionPositionFrame);
+    suggestionPositionFrame = null;
+  }
   suggestionPanel.hidden = true;
   suggestionLabel.textContent = '';
   suggestionLabel.hidden = true;
   suggestionList.innerHTML = '';
   suggestionList.removeAttribute('aria-activedescendant');
+  suggestionPanel.style.removeProperty('top');
+  suggestionPanel.style.removeProperty('left');
+  suggestionPanel.style.removeProperty('width');
   suggestionState.items = [];
   suggestionState.activeIndex = -1;
   suggestionState.context = null;
