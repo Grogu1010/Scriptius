@@ -36,6 +36,10 @@ const progressTrack = document.getElementById('scriptProgressTrack');
 const progressValue = document.getElementById('scriptProgressValue');
 const progressLabel = document.getElementById('progressLabel');
 
+const suggestionPanel = document.getElementById('suggestionPanel');
+const suggestionLabel = document.getElementById('suggestionLabel');
+const suggestionList = document.getElementById('suggestionList');
+
 const libraryBtn = document.getElementById('libraryBtn');
 const libraryDrawer = document.getElementById('libraryDrawer');
 const closeLibraryBtn = document.getElementById('closeLibraryBtn');
@@ -60,6 +64,56 @@ const AUTOSAVE_DELAY = 800;
 const LINES_PER_PAGE = 55;
 const PROGRESS_PAGE_GOAL = 110;
 const NUMBER_FORMATTER = new Intl.NumberFormat();
+
+const SCENE_PREFIX_SUGGESTIONS = Object.freeze([
+  'INT.',
+  'EXT.',
+  'INT./EXT.',
+  'EXT./INT.',
+  'I/E.',
+  'EST.',
+  'INT & EXT.',
+]);
+
+const CHARACTER_QUALIFIER_SUGGESTIONS = Object.freeze([
+  "CONT'D",
+  'V.O.',
+  'O.S.',
+  'O.C.',
+  'INTO PHONE',
+  'ON RADIO',
+  'FILTERED',
+  'SOTTO',
+]);
+
+const TIME_OF_DAY_SUGGESTIONS = Object.freeze([
+  'DAY',
+  'NIGHT',
+  'MORNING',
+  'AFTERNOON',
+  'EVENING',
+  'LATER',
+  'CONTINUOUS',
+  'SAME',
+  'DAWN',
+  'DUSK',
+]);
+
+const MAX_SUGGESTIONS = 6;
+
+const suggestionData = {
+  characterCounts: new Map(),
+  qualifierCounts: new Map(),
+  locationData: new Map(),
+  timeCounts: new Map(),
+  scenePrefixes: new Map(),
+};
+
+const suggestionState = {
+  items: [],
+  activeIndex: -1,
+  context: null,
+};
 
 const INDENTS = Object.freeze({
   action: '',
@@ -118,12 +172,21 @@ function attachEventListeners() {
   editor.addEventListener('keydown', handleEditorKeydown);
   editor.addEventListener('click', handleCaretChange);
   editor.addEventListener('keyup', handleCaretChange);
+  editor.addEventListener('blur', closeSuggestionPanel);
+  editor.addEventListener('focus', () => {
+    requestAnimationFrame(updateSuggestionPanel);
+  });
 
   document.addEventListener('selectionchange', () => {
     if (document.activeElement === editor) {
       handleCaretChange();
     }
   });
+
+  if (suggestionList) {
+    suggestionList.addEventListener('mousedown', handleSuggestionPointerDown);
+    suggestionList.addEventListener('mouseover', handleSuggestionHover);
+  }
 
   titleInput.addEventListener('input', () => {
     markDirty();
@@ -277,6 +340,10 @@ function attachEventListeners() {
 }
 
 function handleEditorKeydown(event) {
+  if (handleSuggestionKeydown(event)) {
+    return;
+  }
+
   if (event.key === 'Enter') {
     event.preventDefault();
     insertLineBreak(event.shiftKey);
@@ -292,6 +359,7 @@ function handleEditorKeydown(event) {
 function handleCaretChange() {
   const caret = editor.selectionStart;
   highlightFromCaret(caret, { scrollPreview: false });
+  updateSuggestionPanel();
 }
 
 function insertSnippet(snippet) {
@@ -351,6 +419,693 @@ function findLineInfoForCaret(position) {
   if (!lineInfos.length) return null;
   const lineIndex = getLineIndexFromCaret(position, lineInfos);
   return lineInfos[lineIndex] || null;
+}
+
+function updateSuggestionPanel() {
+  if (!suggestionPanel || !suggestionList) return;
+  if (currentViewMode !== 'editor') {
+    closeSuggestionPanel();
+    return;
+  }
+  if (document.activeElement !== editor) {
+    closeSuggestionPanel();
+    return;
+  }
+  const caret = editor.selectionStart;
+  const lineInfo = findLineInfoForCaret(caret);
+  if (!lineInfo) {
+    closeSuggestionPanel();
+    return;
+  }
+  const context = determineSuggestionContext(lineInfo, caret);
+  if (!context) {
+    closeSuggestionPanel();
+    return;
+  }
+  const items = buildSuggestionsForContext(context);
+  if (!items.length) {
+    closeSuggestionPanel();
+    return;
+  }
+
+  const previous = suggestionState.context;
+  const contextChanged =
+    !previous ||
+    previous.type !== context.type ||
+    previous.mode !== context.mode ||
+    previous.lineIndex !== context.lineIndex;
+
+  suggestionState.context = context;
+  suggestionState.items = items;
+  if (contextChanged || suggestionState.activeIndex < 0 || suggestionState.activeIndex >= items.length) {
+    suggestionState.activeIndex = 0;
+  }
+
+  renderSuggestionList(items, context);
+}
+
+function buildSuggestionsForContext(context) {
+  if (!context) return [];
+  if (context.type === 'character') {
+    if (context.mode === 'qualifier') {
+      return getQualifierSuggestions(context.prefix, context.currentValue);
+    }
+    return getCharacterNameSuggestions(context.prefix, context.currentValue);
+  }
+  if (context.type === 'scene') {
+    if (context.mode === 'prefix') {
+      return getScenePrefixSuggestions(context.prefix, context.currentValue);
+    }
+    if (context.mode === 'location') {
+      return getSceneLocationSuggestions(context.prefix, context.currentValue);
+    }
+    if (context.mode === 'time') {
+      return getSceneTimeSuggestions(context.prefix, context.location, context.currentValue);
+    }
+  }
+  return [];
+}
+
+function getSuggestionLabel(context) {
+  if (!context) return '';
+  if (context.type === 'character') {
+    return context.mode === 'qualifier' ? 'Character notations' : 'Character names';
+  }
+  if (context.type === 'scene') {
+    if (context.mode === 'prefix') return 'Scene prefixes';
+    if (context.mode === 'location') return 'Scene locations';
+    if (context.mode === 'time') return 'Time of day';
+  }
+  return 'Suggestions';
+}
+
+function renderSuggestionList(items, context) {
+  if (!suggestionPanel || !suggestionList || !suggestionLabel) return;
+  const label = getSuggestionLabel(context);
+  if (label) {
+    suggestionLabel.textContent = label;
+    suggestionLabel.hidden = false;
+    suggestionList.setAttribute('aria-label', label);
+  } else {
+    suggestionLabel.textContent = '';
+    suggestionLabel.hidden = true;
+    suggestionList.removeAttribute('aria-label');
+  }
+
+  suggestionPanel.hidden = false;
+  suggestionList.innerHTML = '';
+  const fragment = document.createDocumentFragment();
+  items.forEach((item, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'suggestion-option';
+    button.dataset.index = String(index);
+    button.dataset.kind = item.kind;
+    button.id = `suggestion-option-${index}`;
+    button.setAttribute('role', 'option');
+    button.textContent = item.label;
+    fragment.appendChild(button);
+  });
+  suggestionList.appendChild(fragment);
+  setActiveSuggestion(suggestionState.activeIndex);
+}
+
+function setActiveSuggestion(index) {
+  if (!suggestionList) return;
+  const options = suggestionList.querySelectorAll('.suggestion-option');
+  if (!options.length) {
+    suggestionState.activeIndex = -1;
+    suggestionList.removeAttribute('aria-activedescendant');
+    return;
+  }
+
+  let nextIndex = Number(index);
+  if (Number.isNaN(nextIndex) || nextIndex < 0) {
+    nextIndex = 0;
+  }
+  if (nextIndex >= options.length) {
+    nextIndex = nextIndex % options.length;
+  }
+
+  suggestionState.activeIndex = nextIndex;
+  options.forEach((option, idx) => {
+    const isActive = idx === nextIndex;
+    option.classList.toggle('is-active', isActive);
+    option.setAttribute('aria-selected', String(isActive));
+    if (isActive) {
+      suggestionList.setAttribute('aria-activedescendant', option.id);
+    }
+  });
+}
+
+function moveActiveSuggestion(delta) {
+  if (!suggestionState.items.length) return;
+  const length = suggestionState.items.length;
+  const nextIndex = (suggestionState.activeIndex + delta + length) % length;
+  setActiveSuggestion(nextIndex);
+}
+
+function applyActiveSuggestion() {
+  const index = suggestionState.activeIndex;
+  if (index < 0 || index >= suggestionState.items.length) return;
+  const item = suggestionState.items[index];
+  applySuggestion(item);
+}
+
+function applySuggestion(item) {
+  if (!item) return;
+  const caret = editor.selectionStart;
+  const lineInfo = findLineInfoForCaret(caret);
+  if (!lineInfo) return;
+  const context = determineSuggestionContext(lineInfo, caret);
+  if (!context || !suggestionState.context) return;
+  if (context.type !== suggestionState.context.type || context.mode !== suggestionState.context.mode) {
+    return;
+  }
+
+  const lineStart = lineInfo.startFormatted;
+  const indentLength = lineInfo.indentLength || 0;
+  const lineText = editor.value.slice(lineStart, lineInfo.endFormatted);
+  const content = lineText.slice(indentLength);
+  const caretInContent = Math.max(0, Math.min(caret - lineStart - indentLength, content.length));
+
+  let rangeStart = null;
+  let rangeEnd = null;
+  let replacement = '';
+
+  if (context.type === 'character') {
+    if (context.mode === 'name') {
+      const baseEndRaw = context.baseEnd ?? content.indexOf('(');
+      const baseEnd = baseEndRaw === -1 ? content.length : baseEndRaw;
+      rangeStart = lineStart + indentLength;
+      rangeEnd = lineStart + indentLength + baseEnd;
+      replacement = item.value;
+      const nextChar = content.charAt(baseEnd);
+      if (nextChar === '(') {
+        replacement = `${replacement} `;
+      }
+    } else if (context.mode === 'qualifier') {
+      const openIndex = context.openParenOffset ?? content.lastIndexOf('(', caretInContent - 1);
+      if (openIndex === -1) return;
+      const closingIndex = content.indexOf(')', openIndex);
+      rangeStart = lineStart + indentLength + openIndex;
+      if (closingIndex !== -1) {
+        rangeEnd = lineStart + indentLength + closingIndex + 1;
+      } else {
+        rangeEnd = lineStart + indentLength + caretInContent;
+      }
+      replacement = `(${item.value})`;
+    }
+  } else if (context.type === 'scene') {
+    if (context.mode === 'prefix') {
+      let start = lineStart + indentLength;
+      while (start < lineInfo.endFormatted && editor.value[start] === ' ') {
+        start += 1;
+      }
+      let end = start;
+      while (end < lineInfo.endFormatted) {
+        const ch = editor.value[end];
+        if (ch === ' ' || ch === '-') {
+          break;
+        }
+        end += 1;
+      }
+      while (end < lineInfo.endFormatted && editor.value[end] === ' ') {
+        end += 1;
+      }
+      rangeStart = start;
+      rangeEnd = end;
+      replacement = `${item.value} `;
+    } else if (context.mode === 'location') {
+      const prefixEnd = context.prefixEnd || 0;
+      const locationStart = context.locationStart ?? prefixEnd;
+      const locationEnd = context.locationEnd ?? content.length;
+      rangeStart = lineStart + indentLength + locationStart;
+      rangeEnd = lineStart + indentLength + locationEnd;
+      const remainder = content.slice(locationEnd);
+      replacement = item.value;
+      if (locationStart === prefixEnd && prefixEnd > 0) {
+        replacement = ` ${replacement}`;
+      }
+      if (remainder.startsWith('-')) {
+        replacement = `${replacement} `;
+      }
+    } else if (context.mode === 'time') {
+      if (!Number.isInteger(context.timeStart) || context.timeStart < 0) return;
+      rangeStart = lineStart + indentLength + context.timeStart;
+      rangeEnd = lineStart + indentLength + content.length;
+      replacement = item.value;
+    }
+  }
+
+  if (rangeStart === null || rangeEnd === null) return;
+  replaceEditorRange(rangeStart, rangeEnd, replacement);
+}
+
+function replaceEditorRange(start, end, replacement) {
+  const text = editor.value;
+  const safeStart = Math.max(0, Math.min(start, text.length));
+  const safeEnd = Math.max(safeStart, Math.min(end, text.length));
+  const before = text.slice(0, safeStart);
+  const after = text.slice(safeEnd);
+  editor.value = `${before}${replacement}${after}`;
+  const caretPosition = safeStart + replacement.length;
+  editor.setSelectionRange(caretPosition, caretPosition);
+  closeSuggestionPanel();
+  applyFormattingAndRefresh();
+}
+
+function handleSuggestionKeydown(event) {
+  if (!isSuggestionOpen()) return false;
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    moveActiveSuggestion(1);
+    return true;
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    moveActiveSuggestion(-1);
+    return true;
+  }
+  if (event.key === 'Tab') {
+    event.preventDefault();
+    applyActiveSuggestion();
+    return true;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeSuggestionPanel();
+    return true;
+  }
+  return false;
+}
+
+function isSuggestionOpen() {
+  return Boolean(suggestionState.items.length && suggestionPanel && !suggestionPanel.hidden);
+}
+
+function handleSuggestionPointerDown(event) {
+  const button = event.target.closest('.suggestion-option');
+  if (!button) return;
+  event.preventDefault();
+  const index = Number(button.dataset.index);
+  if (Number.isNaN(index)) return;
+  setActiveSuggestion(index);
+  applyActiveSuggestion();
+}
+
+function handleSuggestionHover(event) {
+  const button = event.target.closest('.suggestion-option');
+  if (!button) return;
+  const index = Number(button.dataset.index);
+  if (Number.isNaN(index) || index === suggestionState.activeIndex) return;
+  setActiveSuggestion(index);
+}
+
+function closeSuggestionPanel() {
+  if (!suggestionPanel || !suggestionList || !suggestionLabel) return;
+  suggestionPanel.hidden = true;
+  suggestionLabel.textContent = '';
+  suggestionLabel.hidden = true;
+  suggestionList.innerHTML = '';
+  suggestionList.removeAttribute('aria-activedescendant');
+  suggestionState.items = [];
+  suggestionState.activeIndex = -1;
+  suggestionState.context = null;
+}
+
+function determineSuggestionContext(lineInfo, caret) {
+  if (!lineInfo) return null;
+  const lineIndex = Number.isInteger(lineInfo.index) ? lineInfo.index : 0;
+  const lineStart = lineInfo.startFormatted;
+  const indentLength = lineInfo.indentLength || 0;
+  const lineText = editor.value.slice(lineStart, lineInfo.endFormatted);
+  const content = lineText.slice(indentLength);
+  const uppercaseContent = content.toUpperCase();
+  const caretOffset = Math.max(0, Math.min(caret - lineStart, lineText.length));
+  const caretInContent = Math.max(0, Math.min(caretOffset - indentLength, uppercaseContent.length));
+  const beforeCaret = content.slice(0, caretInContent);
+  const uppercaseBeforeCaret = beforeCaret.toUpperCase();
+  const trimmedBeforeCaret = uppercaseBeforeCaret.trim();
+
+  const isCharacterLine = lineInfo.type === 'character' || isCharacter(uppercaseContent);
+  if (isCharacterLine && (trimmedBeforeCaret.length > 0 || uppercaseContent.includes('('))) {
+    const lastOpenParen = uppercaseBeforeCaret.lastIndexOf('(');
+    const lastCloseParen = uppercaseBeforeCaret.lastIndexOf(')');
+    const insideParenthesis = lastOpenParen !== -1 && (lastCloseParen === -1 || lastCloseParen < lastOpenParen);
+    if (insideParenthesis) {
+      const qualifierPrefix = uppercaseBeforeCaret.slice(lastOpenParen + 1).trim();
+      const afterOpen = uppercaseContent.slice(lastOpenParen + 1);
+      const closingIndex = afterOpen.indexOf(')');
+      const currentQualifier = closingIndex !== -1 ? afterOpen.slice(0, closingIndex).trim() : qualifierPrefix;
+      return {
+        type: 'character',
+        mode: 'qualifier',
+        prefix: qualifierPrefix,
+        currentValue: currentQualifier,
+        lineIndex,
+        indentLength,
+        openParenOffset: lastOpenParen,
+      };
+    }
+    const baseEndRaw = uppercaseContent.indexOf('(');
+    const baseEnd = baseEndRaw === -1 ? uppercaseContent.length : baseEndRaw;
+    const baseName = uppercaseContent.slice(0, baseEnd).trim();
+    return {
+      type: 'character',
+      mode: 'name',
+      prefix: trimmedBeforeCaret,
+      currentValue: baseName,
+      lineIndex,
+      indentLength,
+      baseEnd,
+    };
+  }
+
+  const prefixMatch = uppercaseContent.match(SCENE_PATTERN);
+  const hasScenePrefix = prefixMatch && prefixMatch.index === 0;
+  const hyphenInfo = findSceneHyphen(uppercaseContent);
+  const hyphenIndex = hyphenInfo ? hyphenInfo.index : -1;
+  const hyphenLength = hyphenInfo ? hyphenInfo.length : 0;
+  const timeStart = hyphenIndex !== -1 ? hyphenIndex + hyphenLength : -1;
+
+  if (hasScenePrefix) {
+    const prefixRaw = prefixMatch[0];
+    const prefixEnd = prefixRaw.length;
+    const prefixComplete = prefixRaw.includes('.') || prefixRaw.includes('/') || prefixRaw.includes('&');
+    const caretInPrefix = caretInContent < prefixEnd;
+    const caretAtEndOfPrefix = caretInContent === prefixEnd;
+
+    let locationStart = prefixEnd;
+    if (uppercaseContent.charAt(locationStart) === ' ') {
+      locationStart += 1;
+    }
+    const locationEnd = hyphenIndex !== -1 ? hyphenIndex : uppercaseContent.length;
+    const locationFull = uppercaseContent.slice(locationStart, locationEnd).trim();
+    const timeFull = timeStart !== -1 ? uppercaseContent.slice(timeStart).trim() : '';
+
+    if (caretInPrefix || (!prefixComplete && caretAtEndOfPrefix)) {
+      const prefixBeforeCaret = uppercaseBeforeCaret.slice(0, Math.min(caretInContent, prefixEnd)).trim();
+      const currentPrefix = normaliseScenePrefix(prefixRaw);
+      return {
+        type: 'scene',
+        mode: 'prefix',
+        prefix: prefixBeforeCaret,
+        currentValue: currentPrefix,
+        lineIndex,
+        indentLength,
+        prefixEnd,
+        prefixComplete,
+      };
+    }
+
+    if (timeStart !== -1 && caretInContent >= timeStart) {
+      const timePrefix = uppercaseBeforeCaret.slice(timeStart, caretInContent).trim();
+      return {
+        type: 'scene',
+        mode: 'time',
+        prefix: timePrefix,
+        currentValue: timeFull,
+        location: locationFull,
+        lineIndex,
+        indentLength,
+        prefixEnd,
+        locationStart,
+        locationEnd,
+        timeStart,
+        hyphenIndex,
+      };
+    }
+
+    const locationPrefix = uppercaseBeforeCaret.slice(locationStart, Math.min(caretInContent, locationEnd)).trim();
+    return {
+      type: 'scene',
+      mode: 'location',
+      prefix: locationPrefix,
+      currentValue: locationFull,
+      lineIndex,
+      indentLength,
+      prefixEnd,
+      locationStart,
+      locationEnd,
+      hyphenIndex,
+    };
+  }
+
+  if (trimmedBeforeCaret.length > 0 && !trimmedBeforeCaret.includes(' ')) {
+    const matchesPrefix = SCENE_PREFIX_SUGGESTIONS.some((entry) =>
+      normaliseScenePrefix(entry).startsWith(trimmedBeforeCaret)
+    );
+    if (matchesPrefix) {
+      return {
+        type: 'scene',
+        mode: 'prefix',
+        prefix: trimmedBeforeCaret,
+        currentValue: trimmedBeforeCaret,
+        lineIndex,
+        indentLength,
+        prefixEnd: trimmedBeforeCaret.length,
+        prefixComplete: false,
+      };
+    }
+  }
+
+  return null;
+}
+
+function refreshSuggestionData(lineInfos) {
+  suggestionData.characterCounts.clear();
+  suggestionData.qualifierCounts.clear();
+  suggestionData.locationData.clear();
+  suggestionData.timeCounts.clear();
+  suggestionData.scenePrefixes.clear();
+
+  lineInfos.forEach((info) => {
+    if (info.type === 'character') {
+      const parts = splitCharacterName(info.content || '');
+      if (parts.baseName) {
+        incrementCount(suggestionData.characterCounts, parts.baseName);
+      }
+      parts.qualifiers.forEach((qualifier) => {
+        if (qualifier && qualifier.length <= 40) {
+          incrementCount(suggestionData.qualifierCounts, qualifier);
+        }
+      });
+    } else if (info.type === 'parenthetical') {
+      const trimmed = (info.content || '').trim();
+      if (trimmed) {
+        const normalised = trimmed.toUpperCase();
+        if (normalised.length <= 60) {
+          incrementCount(suggestionData.qualifierCounts, normalised);
+        }
+      }
+    }
+
+    if (info.type === 'scene') {
+      const prefixMatch = info.content ? info.content.match(SCENE_PATTERN) : null;
+      if (prefixMatch) {
+        const prefix = normaliseScenePrefix(prefixMatch[0]);
+        incrementCount(suggestionData.scenePrefixes, prefix);
+      }
+      if (info.location) {
+        const location = info.location.toUpperCase();
+        let entry = suggestionData.locationData.get(location);
+        if (!entry) {
+          entry = { count: 0, times: new Map() };
+          suggestionData.locationData.set(location, entry);
+        }
+        entry.count += 1;
+        if (info.timeOfDay) {
+          const time = info.timeOfDay.toUpperCase();
+          entry.times.set(time, (entry.times.get(time) || 0) + 1);
+          incrementCount(suggestionData.timeCounts, time);
+        }
+      } else if (info.timeOfDay) {
+        const time = info.timeOfDay.toUpperCase();
+        incrementCount(suggestionData.timeCounts, time);
+      }
+    }
+  });
+}
+
+function splitCharacterName(text = '') {
+  const upper = text.toUpperCase();
+  const qualifiers = [];
+  upper.replace(/\(([^)]+)\)/g, (match, inner) => {
+    const cleaned = inner.trim();
+    if (cleaned) {
+      qualifiers.push(cleaned);
+    }
+    return '';
+  });
+  const baseName = upper.replace(/\([^)]*\)/g, '').trim();
+  return { baseName, qualifiers };
+}
+
+function normaliseScenePrefix(prefix) {
+  if (!prefix) return '';
+  return prefix
+    .toUpperCase()
+    .replace(/\s*\/\s*/g, '/')
+    .replace(/\s*&\s*/g, ' & ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findSceneHyphen(text) {
+  if (!text) return null;
+  let index = text.indexOf(' - ');
+  if (index !== -1) {
+    return { index, length: 3 };
+  }
+  index = text.indexOf(' -');
+  if (index !== -1) {
+    return { index, length: 2 };
+  }
+  index = text.indexOf('- ');
+  if (index !== -1) {
+    return { index, length: 2 };
+  }
+  return null;
+}
+
+function incrementCount(map, key) {
+  if (!key) return;
+  map.set(key, (map.get(key) || 0) + 1);
+}
+
+function getCharacterNameSuggestions(prefix, currentValue) {
+  const upperPrefix = (prefix || '').toUpperCase();
+  const current = (currentValue || '').toUpperCase();
+  const entries = Array.from(suggestionData.characterCounts.entries()).sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1];
+    return a[0].localeCompare(b[0]);
+  });
+  const suggestions = [];
+  const seen = new Set();
+  const filtered = entries.filter(([name]) => !upperPrefix || name.startsWith(upperPrefix));
+  const source = filtered.length ? filtered : entries;
+  source.forEach(([name]) => {
+    if (name === current) return;
+    addSuggestionOption(suggestions, seen, name, 'characterName');
+  });
+  return suggestions.slice(0, MAX_SUGGESTIONS);
+}
+
+function getQualifierSuggestions(prefix, currentValue) {
+  const upperPrefix = (prefix || '').toUpperCase();
+  const current = (currentValue || '').toUpperCase();
+  const suggestions = [];
+  const seen = new Set();
+  const entries = Array.from(suggestionData.qualifierCounts.entries()).sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1];
+    return a[0].localeCompare(b[0]);
+  });
+  entries.forEach(([qualifier]) => {
+    if (qualifier === current) return;
+    if (upperPrefix && !qualifier.startsWith(upperPrefix)) return;
+    addSuggestionOption(suggestions, seen, qualifier, 'characterQualifier');
+  });
+  CHARACTER_QUALIFIER_SUGGESTIONS.forEach((qualifier) => {
+    const value = qualifier.toUpperCase();
+    if (value === current) return;
+    if (upperPrefix && !value.startsWith(upperPrefix)) return;
+    addSuggestionOption(suggestions, seen, value, 'characterQualifier');
+  });
+  return suggestions.slice(0, MAX_SUGGESTIONS);
+}
+
+function getScenePrefixSuggestions(prefix, currentValue) {
+  const upperPrefix = (prefix || '').toUpperCase();
+  const current = normaliseScenePrefix(currentValue || '');
+  const suggestions = [];
+  const seen = new Set();
+  const entries = Array.from(suggestionData.scenePrefixes.entries()).sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1];
+    return a[0].localeCompare(b[0]);
+  });
+  entries.forEach(([value]) => {
+    const normalised = normaliseScenePrefix(value);
+    if (normalised === current) return;
+    if (upperPrefix && !normalised.startsWith(upperPrefix)) return;
+    addSuggestionOption(suggestions, seen, normalised, 'scenePrefix');
+  });
+  SCENE_PREFIX_SUGGESTIONS.forEach((value) => {
+    const normalised = normaliseScenePrefix(value);
+    if (normalised === current) return;
+    if (upperPrefix && !normalised.startsWith(upperPrefix)) return;
+    addSuggestionOption(suggestions, seen, normalised, 'scenePrefix');
+  });
+  return suggestions.slice(0, MAX_SUGGESTIONS);
+}
+
+function getSceneLocationSuggestions(prefix, currentValue) {
+  const upperPrefix = (prefix || '').toUpperCase();
+  const current = (currentValue || '').toUpperCase();
+  const suggestions = [];
+  const seen = new Set();
+  const entries = Array.from(suggestionData.locationData.entries()).sort((a, b) => {
+    if (b[1].count !== a[1].count) return b[1].count - a[1].count;
+    return a[0].localeCompare(b[0]);
+  });
+  const filtered = entries.filter(([location]) => !upperPrefix || location.startsWith(upperPrefix));
+  const source = filtered.length ? filtered : entries;
+  source.forEach(([location]) => {
+    if (location === current) return;
+    addSuggestionOption(suggestions, seen, location, 'sceneLocation');
+  });
+  return suggestions.slice(0, MAX_SUGGESTIONS);
+}
+
+function getSceneTimeSuggestions(prefix, location, currentValue) {
+  const upperPrefix = (prefix || '').toUpperCase();
+  const current = (currentValue || '').toUpperCase();
+  const suggestions = [];
+  const seen = new Set();
+
+  if (location) {
+    const entry = suggestionData.locationData.get(location.toUpperCase());
+    if (entry) {
+      const locationTimes = Array.from(entry.times.entries()).sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0].localeCompare(b[0]);
+      });
+      locationTimes.forEach(([time]) => {
+        if (time === current) return;
+        if (upperPrefix && !time.startsWith(upperPrefix)) return;
+        addSuggestionOption(suggestions, seen, time, 'sceneTime');
+      });
+    }
+  }
+
+  const globalTimes = Array.from(suggestionData.timeCounts.entries()).sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1];
+    return a[0].localeCompare(b[0]);
+  });
+  globalTimes.forEach(([time]) => {
+    if (time === current) return;
+    if (upperPrefix && !time.startsWith(upperPrefix)) return;
+    addSuggestionOption(suggestions, seen, time, 'sceneTime');
+  });
+
+  TIME_OF_DAY_SUGGESTIONS.forEach((time) => {
+    const value = time.toUpperCase();
+    if (value === current) return;
+    if (upperPrefix && !value.startsWith(upperPrefix)) return;
+    addSuggestionOption(suggestions, seen, value, 'sceneTime');
+  });
+
+  return suggestions.slice(0, MAX_SUGGESTIONS);
+}
+
+function addSuggestionOption(target, seen, value, kind) {
+  if (!value || seen.has(value)) return;
+  target.push({
+    label: kind === 'characterQualifier' ? `(${value})` : value,
+    value,
+    kind,
+  });
+  seen.add(value);
 }
 
 function toggleExportMenu() {
@@ -430,6 +1185,7 @@ function setViewMode(mode, { persist = true } = {}) {
   });
 
   if (nextMode === 'formatted') {
+    closeSuggestionPanel();
     requestAnimationFrame(() => {
       editor.focus({ preventScroll: true });
       highlightFromCaret(editor.selectionStart, { scrollPreview: true });
@@ -437,6 +1193,7 @@ function setViewMode(mode, { persist = true } = {}) {
   } else {
     requestAnimationFrame(() => {
       editor.focus();
+      updateSuggestionPanel();
     });
   }
 
@@ -667,11 +1424,13 @@ function applyFormattingAndRefresh(options = {}) {
   }
 
   formattingResult = { formattedText, lineInfos };
+  refreshSuggestionData(lineInfos);
   updatePreview(lineInfos);
   updateOutline(lineInfos);
   updateStats(lineInfos);
   updateInsights(lineInfos);
   highlightFromCaret(editor.selectionStart, { scrollPreview: false });
+  updateSuggestionPanel();
   scheduleAutosave();
 }
 
