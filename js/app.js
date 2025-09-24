@@ -863,6 +863,9 @@ function handleSuggestionKeydown(event) {
     return true;
   }
   if (event.key === 'Enter') {
+    if (event.shiftKey) {
+      return false;
+    }
     event.preventDefault();
     applyActiveSuggestion();
     return true;
@@ -945,7 +948,7 @@ function determineSuggestionContext(lineInfo, caret) {
   const uppercaseBeforeCaret = beforeCaret.toUpperCase();
   const trimmedBeforeCaret = uppercaseBeforeCaret.trim();
 
-  const isCharacterLine = lineInfo.type === 'character' || isCharacter(uppercaseContent);
+  const isCharacterLine = lineInfo.type === 'character' || isCharacter(content);
   if (isCharacterLine && (trimmedBeforeCaret.length > 0 || uppercaseContent.includes('('))) {
     const lastOpenParen = uppercaseBeforeCaret.lastIndexOf('(');
     const lastCloseParen = uppercaseBeforeCaret.lastIndexOf(')');
