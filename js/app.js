@@ -60,10 +60,15 @@ const storyDirectionStatus = document.getElementById('storyDirectionStatus');
 const storyDirectionText = document.getElementById('storyDirectionText');
 const storyDirectionActions = document.getElementById('storyDirectionActions');
 const storyDirectionImplementBtn = document.getElementById('storyDirectionImplementBtn');
-const storyDirectionApproveBtn = document.getElementById('storyDirectionApproveBtn');
-const storyDirectionRejectBtn = document.getElementById('storyDirectionRejectBtn');
-const storyDirectionFeedbackStatus = document.getElementById('storyDirectionFeedbackStatus');
+const storyDirectionRegenerateIdeaBtn = document.getElementById('storyDirectionRegenerateIdeaBtn');
+const storyDirectionImplementation = document.getElementById('storyDirectionImplementation');
+const storyDirectionImplementationText = document.getElementById('storyDirectionImplementationText');
+const storyDirectionImplementationActions = document.getElementById('storyDirectionImplementationActions');
+const storyDirectionCommitBtn = document.getElementById('storyDirectionCommitBtn');
+const storyDirectionDiscardBtn = document.getElementById('storyDirectionDiscardBtn');
+const storyDirectionImplementStatus = document.getElementById('storyDirectionImplementStatus');
 const STORY_DIRECTION_DEFAULT_LABEL = storyDirectionBtn?.textContent?.trim() || 'Story direction';
+const STORY_DIRECTION_IMPLEMENT_LABEL = storyDirectionImplementBtn?.textContent?.trim() || 'Implement idea';
 
 const DOCUMENTS_KEY = 'scriptius-documents';
 const ACTIVE_DOCUMENT_KEY = 'scriptius-active-document';
@@ -199,8 +204,9 @@ const previewState = {
 let storageError = false;
 let storageErrorNotified = false;
 let storyDirectionAbortController = null;
+let storyDirectionImplementAbortController = null;
 let lastStoryDirectionIdea = '';
-let storyDirectionFeedbackSelection = null;
+let lastStoryDirectionImplementation = '';
 
 init();
 
@@ -263,12 +269,16 @@ function attachEventListeners() {
     storyDirectionImplementBtn.addEventListener('click', handleStoryDirectionImplement);
   }
 
-  if (storyDirectionApproveBtn) {
-    storyDirectionApproveBtn.addEventListener('click', handleStoryDirectionFeedback);
+  if (storyDirectionRegenerateIdeaBtn) {
+    storyDirectionRegenerateIdeaBtn.addEventListener('click', handleStoryDirectionRegenerateIdea);
   }
 
-  if (storyDirectionRejectBtn) {
-    storyDirectionRejectBtn.addEventListener('click', handleStoryDirectionFeedback);
+  if (storyDirectionCommitBtn) {
+    storyDirectionCommitBtn.addEventListener('click', handleStoryDirectionCommit);
+  }
+
+  if (storyDirectionDiscardBtn) {
+    storyDirectionDiscardBtn.addEventListener('click', handleStoryDirectionDiscard);
   }
 
   libraryBtn.addEventListener('click', openLibrary);
@@ -2765,6 +2775,11 @@ async function handleStoryDirectionRequest(event) {
     storyDirectionAbortController.abort();
   }
 
+  if (storyDirectionImplementAbortController) {
+    storyDirectionImplementAbortController.abort();
+    storyDirectionImplementAbortController = null;
+  }
+
   storyDirectionAbortController = new AbortController();
 
   setStoryDirectionLoading(true);
@@ -2851,21 +2866,119 @@ function setStoryDirectionMessage(message, options = {}) {
   }
 
   lastStoryDirectionIdea = storeIdea ? message : '';
-  resetStoryDirectionFeedback();
+  resetStoryDirectionImplementation({ suppressUpdate: true });
   updateStoryDirectionControls();
 }
 
-function handleStoryDirectionImplement(event) {
+async function handleStoryDirectionImplement(event) {
   event?.preventDefault?.();
   if (!editor || !lastStoryDirectionIdea) return;
 
   const idea = lastStoryDirectionIdea.trim();
   if (!idea) return;
 
+  const scriptExcerpt = createExcerpt(editor?.value || '', 3500);
+  const beatsExcerpt = createExcerpt(beatNotes?.value || '', 1200);
+
+  if (storyDirectionImplementAbortController) {
+    storyDirectionImplementAbortController.abort();
+  }
+
+  storyDirectionImplementAbortController = new AbortController();
+  lastStoryDirectionImplementation = '';
+  resetStoryDirectionImplementation({ keepStatus: false, suppressUpdate: true });
+  setStoryDirectionImplementationLoading(true);
+
+  if (storyDirectionImplementStatus) {
+    storyDirectionImplementStatus.hidden = false;
+    storyDirectionImplementStatus.classList.remove('is-error');
+    storyDirectionImplementStatus.textContent = 'Implementing the idea…';
+  }
+
+  const implementationPrompt = [
+    scriptExcerpt ? `SCRIPT SO FAR:\n${scriptExcerpt}` : 'SCRIPT SO FAR:\n(No script text yet.)',
+    beatsExcerpt ? `QUICK BEATS:\n${beatsExcerpt}` : 'QUICK BEATS:\n(No quick beats entered.)',
+    `NEXT IDEA TO IMPLEMENT:\n${idea}`,
+    'TASK: Continue the screenplay with 6-12 lines of properly formatted script that delivers the idea above. Keep tone, characters and existing plot threads consistent. Return only screenplay text ready to paste into the draft.'
+  ].join('\n\n');
+
+  try {
+    const response = await fetch('https://histage.netlify.app/.netlify/functions/posts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'HiStageReasoning',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You help screenwriters expand on story beats. Read the draft, beats and idea carefully and produce focused screenplay pages that advance the story.'
+          },
+          { role: 'user', content: implementationPrompt }
+        ],
+        temperature: 0.35,
+        max_tokens: 900
+      }),
+      signal: storyDirectionImplementAbortController.signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    const content = data?.choices?.[0]?.message?.content?.trim();
+
+    if (content) {
+      showStoryDirectionImplementation(content);
+      if (storyDirectionImplementStatus) {
+        storyDirectionImplementStatus.hidden = false;
+        storyDirectionImplementStatus.textContent = 'Tick to add this draft to your script or ✕ to remove it.';
+        storyDirectionImplementStatus.classList.remove('is-error');
+      }
+    } else {
+      handleStoryDirectionImplementationError('The AI did not return an implementation. Try again.');
+    }
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      return;
+    }
+    console.error('Story direction implementation failed', error);
+    handleStoryDirectionImplementationError('Story Direction could not implement that idea. Try again in a moment.');
+  } finally {
+    setStoryDirectionImplementationLoading(false);
+    storyDirectionImplementAbortController = null;
+  }
+}
+
+function handleStoryDirectionImplementationError(message) {
+  resetStoryDirectionImplementation({ keepStatus: true, suppressUpdate: true });
+  if (storyDirectionImplementStatus) {
+    storyDirectionImplementStatus.hidden = false;
+    storyDirectionImplementStatus.textContent = message;
+    storyDirectionImplementStatus.classList.add('is-error');
+  }
+  updateStoryDirectionControls();
+}
+
+function handleStoryDirectionRegenerateIdea(event) {
+  event?.preventDefault?.();
+  if (storyDirectionBtn?.disabled) return;
+  resetStoryDirectionImplementation();
+  handleStoryDirectionRequest(event);
+}
+
+function handleStoryDirectionCommit(event) {
+  event?.preventDefault?.();
+  if (!editor || !lastStoryDirectionImplementation) return;
+
+  const addition = lastStoryDirectionImplementation.trim();
+  if (!addition) return;
+
   const currentValue = editor.value || '';
   const trimmedCurrent = currentValue.replace(/\s+$/, '');
   const separator = trimmedCurrent ? '\n\n' : '';
-  const nextValue = `${trimmedCurrent}${separator}${idea}`;
+  const nextValue = `${trimmedCurrent}${separator}${addition}`;
 
   editor.value = nextValue;
   editor.dispatchEvent(new Event('input', { bubbles: true }));
@@ -2873,90 +2986,139 @@ function handleStoryDirectionImplement(event) {
   const caret = editor.value.length;
   editor.setSelectionRange(caret, caret);
 
-  if (storyDirectionFeedbackStatus) {
-    storyDirectionFeedbackStatus.hidden = false;
-    storyDirectionFeedbackStatus.textContent = 'Added the idea to your script.';
-    storyDirectionFeedbackStatus.classList.remove('is-positive', 'is-negative');
-    storyDirectionFeedbackStatus.classList.add('is-positive');
+  if (storyDirectionImplementation) {
+    storyDirectionImplementation.dataset.state = 'committed';
+  }
+
+  if (storyDirectionImplementStatus) {
+    storyDirectionImplementStatus.hidden = false;
+    storyDirectionImplementStatus.textContent = 'Added the implementation to your script.';
+    storyDirectionImplementStatus.classList.remove('is-error');
+  }
+
+  lastStoryDirectionImplementation = '';
+  updateStoryDirectionControls();
+}
+
+function handleStoryDirectionDiscard(event) {
+  event?.preventDefault?.();
+  if (!lastStoryDirectionImplementation) return;
+
+  const regenerate = window.confirm(
+    'Remove this implementation? Click OK to generate a fresh version of the idea, or Cancel to simply discard it.'
+  );
+
+  resetStoryDirectionImplementation();
+
+  if (regenerate) {
+    handleStoryDirectionImplement();
+  } else if (storyDirectionImplementStatus) {
+    storyDirectionImplementStatus.hidden = false;
+    storyDirectionImplementStatus.textContent = 'Implementation removed.';
+    storyDirectionImplementStatus.classList.remove('is-error');
   }
 }
 
-function handleStoryDirectionFeedback(event) {
-  event?.preventDefault?.();
-  if (!lastStoryDirectionIdea) return;
+function setStoryDirectionImplementationLoading(isLoading) {
+  updateStoryDirectionControls({ isImplementing: isLoading });
+}
 
-  const target = event?.currentTarget;
-  if (!target || target.disabled) return;
-
-  const feedback = target.dataset?.feedback;
-  if (!feedback) return;
-
-  if (storyDirectionFeedbackSelection === feedback) {
-    storyDirectionFeedbackSelection = null;
-    if (storyDirectionApproveBtn) storyDirectionApproveBtn.classList.remove('is-active');
-    if (storyDirectionRejectBtn) storyDirectionRejectBtn.classList.remove('is-active');
-    if (storyDirectionFeedbackStatus) {
-      storyDirectionFeedbackStatus.textContent = '';
-      storyDirectionFeedbackStatus.classList.remove('is-positive', 'is-negative');
-      storyDirectionFeedbackStatus.hidden = true;
-    }
+function showStoryDirectionImplementation(text) {
+  const implementation = text?.trim();
+  if (!implementation) {
+    resetStoryDirectionImplementation();
     return;
   }
 
-  storyDirectionFeedbackSelection = feedback;
+  lastStoryDirectionImplementation = implementation;
 
-  if (storyDirectionApproveBtn) {
-    storyDirectionApproveBtn.classList.toggle('is-active', feedback === 'approve');
-  }
-  if (storyDirectionRejectBtn) {
-    storyDirectionRejectBtn.classList.toggle('is-active', feedback === 'reject');
+  if (storyDirectionImplementationText) {
+    storyDirectionImplementationText.textContent = implementation;
   }
 
-  if (storyDirectionFeedbackStatus) {
-    storyDirectionFeedbackStatus.hidden = false;
-    storyDirectionFeedbackStatus.classList.remove('is-positive', 'is-negative');
-    if (feedback === 'approve') {
-      storyDirectionFeedbackStatus.textContent = 'Marked this idea as helpful.';
-      storyDirectionFeedbackStatus.classList.add('is-positive');
-    } else {
-      storyDirectionFeedbackStatus.textContent = "Marked this idea as not quite right.";
-      storyDirectionFeedbackStatus.classList.add('is-negative');
-    }
+  if (storyDirectionImplementation) {
+    storyDirectionImplementation.hidden = false;
+    storyDirectionImplementation.classList.remove('is-error');
+    storyDirectionImplementation.dataset.state = 'preview';
   }
+
+  updateStoryDirectionControls();
 }
 
-function resetStoryDirectionFeedback() {
-  storyDirectionFeedbackSelection = null;
-  if (storyDirectionApproveBtn) {
-    storyDirectionApproveBtn.classList.remove('is-active');
+function resetStoryDirectionImplementation(options = {}) {
+  const { keepStatus = false, suppressUpdate = false } = options;
+
+  lastStoryDirectionImplementation = '';
+
+  if (storyDirectionImplementationText) {
+    storyDirectionImplementationText.textContent = '';
   }
-  if (storyDirectionRejectBtn) {
-    storyDirectionRejectBtn.classList.remove('is-active');
+
+  if (storyDirectionImplementation) {
+    storyDirectionImplementation.hidden = true;
+    storyDirectionImplementation.classList.remove('is-error');
+    storyDirectionImplementation.dataset.state = 'preview';
   }
-  if (storyDirectionFeedbackStatus) {
-    storyDirectionFeedbackStatus.textContent = '';
-    storyDirectionFeedbackStatus.classList.remove('is-positive', 'is-negative');
-    storyDirectionFeedbackStatus.hidden = true;
+
+  if (storyDirectionImplementationActions) {
+    storyDirectionImplementationActions.hidden = true;
+  }
+
+  if (storyDirectionCommitBtn) {
+    storyDirectionCommitBtn.disabled = true;
+  }
+
+  if (storyDirectionDiscardBtn) {
+    storyDirectionDiscardBtn.disabled = true;
+  }
+
+  if (!keepStatus && storyDirectionImplementStatus) {
+    storyDirectionImplementStatus.textContent = '';
+    storyDirectionImplementStatus.hidden = true;
+    storyDirectionImplementStatus.classList.remove('is-error');
+  }
+
+  if (!suppressUpdate) {
+    updateStoryDirectionControls();
   }
 }
 
 function updateStoryDirectionControls(options = {}) {
-  const { isLoading = false } = options;
+  const { isLoading = false, isImplementing = false } = options;
   const hasIdea = Boolean(lastStoryDirectionIdea);
+  const hasImplementation = Boolean(lastStoryDirectionImplementation);
+  const implementationState = storyDirectionImplementation?.dataset?.state;
+  const shouldShowImplementation = hasImplementation || implementationState === 'committed';
 
   if (storyDirectionActions) {
     storyDirectionActions.hidden = !hasIdea;
   }
 
-  const shouldDisable = !hasIdea || isLoading;
+  if (storyDirectionRegenerateIdeaBtn) {
+    storyDirectionRegenerateIdeaBtn.hidden = !hasIdea;
+    storyDirectionRegenerateIdeaBtn.disabled = isLoading || isImplementing;
+  }
+
   if (storyDirectionImplementBtn) {
+    const shouldDisable = !hasIdea || isLoading || isImplementing;
     storyDirectionImplementBtn.disabled = shouldDisable;
+    storyDirectionImplementBtn.textContent = isImplementing ? 'Implementing…' : STORY_DIRECTION_IMPLEMENT_LABEL;
   }
-  if (storyDirectionApproveBtn) {
-    storyDirectionApproveBtn.disabled = shouldDisable;
+
+  if (storyDirectionImplementation) {
+    storyDirectionImplementation.hidden = !shouldShowImplementation;
   }
-  if (storyDirectionRejectBtn) {
-    storyDirectionRejectBtn.disabled = shouldDisable;
+
+  if (storyDirectionImplementationActions) {
+    storyDirectionImplementationActions.hidden = !hasImplementation;
+  }
+
+  if (storyDirectionCommitBtn) {
+    storyDirectionCommitBtn.disabled = !hasImplementation || isLoading || isImplementing;
+  }
+
+  if (storyDirectionDiscardBtn) {
+    storyDirectionDiscardBtn.disabled = !hasImplementation || isLoading || isImplementing;
   }
 }
 
