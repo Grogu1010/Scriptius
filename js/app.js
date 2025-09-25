@@ -57,6 +57,12 @@ const viewModeButtons = document.querySelectorAll('.view-switch__btn[data-view-m
 const storyDirectionBtn = document.getElementById('storyDirectionBtn');
 const storyDirectionOutput = document.getElementById('storyDirectionOutput');
 const storyDirectionStatus = document.getElementById('storyDirectionStatus');
+const storyDirectionText = document.getElementById('storyDirectionText');
+const storyDirectionActions = document.getElementById('storyDirectionActions');
+const storyDirectionImplementBtn = document.getElementById('storyDirectionImplementBtn');
+const storyDirectionApproveBtn = document.getElementById('storyDirectionApproveBtn');
+const storyDirectionRejectBtn = document.getElementById('storyDirectionRejectBtn');
+const storyDirectionFeedbackStatus = document.getElementById('storyDirectionFeedbackStatus');
 const STORY_DIRECTION_DEFAULT_LABEL = storyDirectionBtn?.textContent?.trim() || 'Story direction';
 
 const DOCUMENTS_KEY = 'scriptius-documents';
@@ -193,6 +199,8 @@ const previewState = {
 let storageError = false;
 let storageErrorNotified = false;
 let storyDirectionAbortController = null;
+let lastStoryDirectionIdea = '';
+let storyDirectionFeedbackSelection = null;
 
 init();
 
@@ -249,6 +257,18 @@ function attachEventListeners() {
 
   if (storyDirectionBtn) {
     storyDirectionBtn.addEventListener('click', handleStoryDirectionRequest);
+  }
+
+  if (storyDirectionImplementBtn) {
+    storyDirectionImplementBtn.addEventListener('click', handleStoryDirectionImplement);
+  }
+
+  if (storyDirectionApproveBtn) {
+    storyDirectionApproveBtn.addEventListener('click', handleStoryDirectionFeedback);
+  }
+
+  if (storyDirectionRejectBtn) {
+    storyDirectionRejectBtn.addEventListener('click', handleStoryDirectionFeedback);
   }
 
   libraryBtn.addEventListener('click', openLibrary);
@@ -2734,7 +2754,8 @@ async function handleStoryDirectionRequest(event) {
 
   if (!scriptExcerpt && !beatsExcerpt) {
     setStoryDirectionMessage(
-      'Add some pages or jot ideas in Quick beats so Story Direction has context to work with.'
+      'Add some pages or jot ideas in Quick beats so Story Direction has context to work with.',
+      { storeIdea: false }
     );
     storyDirectionStatus.textContent = '';
     return;
@@ -2813,14 +2834,130 @@ function setStoryDirectionLoading(isLoading) {
       storyDirectionOutput.removeAttribute('aria-busy');
     }
   }
+  updateStoryDirectionControls({ isLoading });
 }
 
 function setStoryDirectionMessage(message, options = {}) {
   if (!storyDirectionOutput) return;
-  const { isError = false } = options;
+  const { isError = false, storeIdea = !isError } = options;
+
   storyDirectionOutput.hidden = false;
-  storyDirectionOutput.textContent = message;
   storyDirectionOutput.classList.toggle('is-error', Boolean(isError));
+
+  if (storyDirectionText) {
+    storyDirectionText.textContent = message;
+  } else {
+    storyDirectionOutput.textContent = message;
+  }
+
+  lastStoryDirectionIdea = storeIdea ? message : '';
+  resetStoryDirectionFeedback();
+  updateStoryDirectionControls();
+}
+
+function handleStoryDirectionImplement(event) {
+  event?.preventDefault?.();
+  if (!editor || !lastStoryDirectionIdea) return;
+
+  const idea = lastStoryDirectionIdea.trim();
+  if (!idea) return;
+
+  const currentValue = editor.value || '';
+  const trimmedCurrent = currentValue.replace(/\s+$/, '');
+  const separator = trimmedCurrent ? '\n\n' : '';
+  const nextValue = `${trimmedCurrent}${separator}${idea}`;
+
+  editor.value = nextValue;
+  editor.dispatchEvent(new Event('input', { bubbles: true }));
+  editor.focus();
+  const caret = editor.value.length;
+  editor.setSelectionRange(caret, caret);
+
+  if (storyDirectionFeedbackStatus) {
+    storyDirectionFeedbackStatus.hidden = false;
+    storyDirectionFeedbackStatus.textContent = 'Added the idea to your script.';
+    storyDirectionFeedbackStatus.classList.remove('is-positive', 'is-negative');
+    storyDirectionFeedbackStatus.classList.add('is-positive');
+  }
+}
+
+function handleStoryDirectionFeedback(event) {
+  event?.preventDefault?.();
+  if (!lastStoryDirectionIdea) return;
+
+  const target = event?.currentTarget;
+  if (!target || target.disabled) return;
+
+  const feedback = target.dataset?.feedback;
+  if (!feedback) return;
+
+  if (storyDirectionFeedbackSelection === feedback) {
+    storyDirectionFeedbackSelection = null;
+    if (storyDirectionApproveBtn) storyDirectionApproveBtn.classList.remove('is-active');
+    if (storyDirectionRejectBtn) storyDirectionRejectBtn.classList.remove('is-active');
+    if (storyDirectionFeedbackStatus) {
+      storyDirectionFeedbackStatus.textContent = '';
+      storyDirectionFeedbackStatus.classList.remove('is-positive', 'is-negative');
+      storyDirectionFeedbackStatus.hidden = true;
+    }
+    return;
+  }
+
+  storyDirectionFeedbackSelection = feedback;
+
+  if (storyDirectionApproveBtn) {
+    storyDirectionApproveBtn.classList.toggle('is-active', feedback === 'approve');
+  }
+  if (storyDirectionRejectBtn) {
+    storyDirectionRejectBtn.classList.toggle('is-active', feedback === 'reject');
+  }
+
+  if (storyDirectionFeedbackStatus) {
+    storyDirectionFeedbackStatus.hidden = false;
+    storyDirectionFeedbackStatus.classList.remove('is-positive', 'is-negative');
+    if (feedback === 'approve') {
+      storyDirectionFeedbackStatus.textContent = 'Marked this idea as helpful.';
+      storyDirectionFeedbackStatus.classList.add('is-positive');
+    } else {
+      storyDirectionFeedbackStatus.textContent = "Marked this idea as not quite right.";
+      storyDirectionFeedbackStatus.classList.add('is-negative');
+    }
+  }
+}
+
+function resetStoryDirectionFeedback() {
+  storyDirectionFeedbackSelection = null;
+  if (storyDirectionApproveBtn) {
+    storyDirectionApproveBtn.classList.remove('is-active');
+  }
+  if (storyDirectionRejectBtn) {
+    storyDirectionRejectBtn.classList.remove('is-active');
+  }
+  if (storyDirectionFeedbackStatus) {
+    storyDirectionFeedbackStatus.textContent = '';
+    storyDirectionFeedbackStatus.classList.remove('is-positive', 'is-negative');
+    storyDirectionFeedbackStatus.hidden = true;
+  }
+}
+
+function updateStoryDirectionControls(options = {}) {
+  const { isLoading = false } = options;
+  const hasIdea = Boolean(lastStoryDirectionIdea);
+
+  if (storyDirectionActions) {
+    storyDirectionActions.hidden = !hasIdea;
+  }
+
+  const shouldDisable = !hasIdea || isLoading;
+  if (storyDirectionImplementBtn) {
+    storyDirectionImplementBtn.disabled = shouldDisable;
+  }
+  if (storyDirectionApproveBtn) {
+    storyDirectionApproveBtn.disabled = shouldDisable;
+  }
+  if (storyDirectionRejectBtn) {
+    storyDirectionRejectBtn.disabled = shouldDisable;
+  }
 }
 
 function createExcerpt(text, limit = 3500) {
