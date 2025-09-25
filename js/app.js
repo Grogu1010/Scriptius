@@ -186,6 +186,8 @@ const previewState = {
   lineToPage: [],
   pageCount: 1,
 };
+let storageError = false;
+let storageErrorNotified = false;
 
 init();
 
@@ -2271,6 +2273,7 @@ function markDirty() {
 
 function performAutosave() {
   if (!currentDocumentId) return;
+  autosaveTimer = null;
   const now = new Date();
   const updates = {
     title: titleInput.value,
@@ -2278,20 +2281,30 @@ function performAutosave() {
     beats: beatNotes.value,
     updatedAt: now.toISOString(),
   };
-  try {
-    upsertDocument(currentDocumentId, updates);
-    lastSavedAt = now;
-    isDirty = false;
-    updateAutosaveStatus();
-    renderDocumentLibrary();
-  } catch (error) {
-    console.warn('Autosave failed', error);
+  const success = upsertDocument(currentDocumentId, updates);
+  if (!success) {
+    return;
   }
+  lastSavedAt = now;
+  isDirty = false;
+  updateAutosaveStatus();
+  renderDocumentLibrary();
 }
 
 function updateAutosaveStatus() {
+  if (!autosaveStatus) return;
   let message = '';
   let state = 'idle';
+
+  if (storageError) {
+    message = 'Storage unavailable — changes may not be saved';
+    state = 'error';
+    autosaveStatus.textContent = message;
+    if (autosaveIndicator) {
+      autosaveIndicator.dataset.state = state;
+    }
+    return;
+  }
 
   if (!lastSavedAt) {
     if (isDirty) {
@@ -2386,20 +2399,36 @@ function loadDocumentsFromStorage() {
 function persistDocuments() {
   try {
     localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(documents));
+    if (storageError) {
+      storageError = false;
+      storageErrorNotified = false;
+      updateAutosaveStatus();
+    }
+    return true;
   } catch (error) {
     console.warn('Failed to store documents', error);
+    storageError = true;
+    if (!storageErrorNotified) {
+      showSnackbar('Browser storage is unavailable. Changes may not be saved.');
+      storageErrorNotified = true;
+    }
+    updateAutosaveStatus();
+    return false;
   }
 }
 
 function upsertDocument(id, updates) {
   const index = documents.findIndex((doc) => doc.id === id);
-  if (index === -1) return;
+  if (index === -1) return false;
   documents[index] = {
     ...documents[index],
     ...updates,
   };
-  persistDocuments();
-  localStorage.setItem(ACTIVE_DOCUMENT_KEY, id);
+  const persisted = persistDocuments();
+  if (persisted) {
+    localStorage.setItem(ACTIVE_DOCUMENT_KEY, id);
+  }
+  return persisted;
 }
 
 function createDocument(initial = {}) {
@@ -2560,11 +2589,18 @@ function encodeSharePayload(payload) {
   bytes.forEach((byte) => {
     binary += String.fromCharCode(byte);
   });
-  return btoa(binary);
+  const base64 = btoa(binary);
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
 function decodeSharePayload(encoded) {
-  const binary = atob(encoded);
+  const sanitized = encoded.replace(/\s/g, '');
+  let base64 = sanitized.replace(/-/g, '+').replace(/_/g, '/');
+  const padding = base64.length % 4;
+  if (padding > 0) {
+    base64 = base64.padEnd(base64.length + (4 - padding), '=');
+  }
+  const binary = atob(base64);
   const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
   const json = new TextDecoder().decode(bytes);
   return JSON.parse(json);
@@ -2602,16 +2638,71 @@ function toggleTheme() {
 }
 
 function applyStoredTheme() {
-  const stored = localStorage.getItem(THEME_KEY);
-  if (stored) {
+  let stored = null;
+  try {
+    stored = localStorage.getItem(THEME_KEY);
+  } catch (error) {
+    console.warn('Unable to read stored theme preference', error);
+  }
+  if (stored === 'light' || stored === 'dark') {
     setTheme(stored);
+    return;
+  }
+
+  const mediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  const prefersDark = mediaQuery?.matches;
+  setTheme(prefersDark ? 'dark' : 'light', { persist: false });
+
+  if (mediaQuery) {
+    const handleChange = (event) => {
+      let hasStoredPreference = false;
+      try {
+        hasStoredPreference = Boolean(localStorage.getItem(THEME_KEY));
+      } catch (error) {
+        console.warn('Unable to read stored theme preference', error);
+      }
+      if (hasStoredPreference) {
+        if (mediaQuery.removeEventListener) {
+          mediaQuery.removeEventListener('change', handleChange);
+        } else if (mediaQuery.removeListener) {
+          mediaQuery.removeListener(handleChange);
+        }
+        return;
+      }
+      setTheme(event.matches ? 'dark' : 'light', { persist: false });
+    };
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handleChange);
+    } else if (mediaQuery.addListener) {
+      mediaQuery.addListener(handleChange);
+    }
   }
 }
 
-function setTheme(theme) {
+function setTheme(theme, options = {}) {
+  const { persist = true } = options;
   document.documentElement.dataset.theme = theme;
-  localStorage.setItem(THEME_KEY, theme);
-  themeToggle.textContent = theme === 'dark' ? '☀️' : '🌗';
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch (error) {
+      console.warn('Unable to store theme preference', error);
+    }
+  } else {
+    try {
+      localStorage.removeItem(THEME_KEY);
+    } catch (error) {
+      console.warn('Unable to clear stored theme preference', error);
+    }
+  }
+  if (themeToggle) {
+    const isDark = theme === 'dark';
+    const label = isDark ? 'Switch to light theme' : 'Switch to dark theme';
+    themeToggle.textContent = isDark ? '☀️' : '🌗';
+    themeToggle.setAttribute('aria-label', label);
+    themeToggle.setAttribute('title', label);
+  }
 }
 
 function focusLine(lineIndex) {
