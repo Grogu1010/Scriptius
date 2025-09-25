@@ -598,6 +598,36 @@ kbd {
   box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.18);
 }
 
+.status-indicator[data-state='error'] {
+  background: rgba(239, 68, 68, 0.24);
+  color: var(--danger);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.24);
+}
+
+.status-indicator[data-state='error'] .status-dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.28);
+  animation: status-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-indicator[data-state='error'] .status-dot {
+    animation: none;
+  }
+}
+
 .progress-card {
   gap: 1.2rem;
 }
