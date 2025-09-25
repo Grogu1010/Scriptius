@@ -244,8 +244,11 @@
 
             <section class="panel side-card ai-card" aria-label="AI toolbox">
               <div class="panel-section">
-                <div class="panel-section-heading">
-                  <h3>AI Toolbox</h3>
+                <div class="panel-section-heading ai-card__heading">
+                  <div class="ai-card__title">
+                    <h3>AI Toolbox</h3>
+                    <span class="ai-card__powered">Powered by HiStage</span>
+                  </div>
                   <span class="panel-hint">Ask for a next beat when you feel stuck.</span>
                 </div>
                 <p class="ai-card__intro">
@@ -255,7 +258,33 @@
                   <button type="button" class="ghost" id="storyDirectionBtn">Story direction</button>
                   <span class="ai-card__status" id="storyDirectionStatus" role="status" aria-live="polite"></span>
                 </div>
-                <article class="ai-card__output" id="storyDirectionOutput" hidden aria-live="polite"></article>
+                <article class="ai-card__output" id="storyDirectionOutput" hidden aria-live="polite">
+                  <p class="ai-card__idea" id="storyDirectionText"></p>
+                  <div class="ai-card__idea-actions" id="storyDirectionActions" hidden>
+                    <button type="button" class="primary" id="storyDirectionImplementBtn">Implement idea</button>
+                    <div class="ai-card__feedback" role="group" aria-label="Rate this idea">
+                      <button
+                        type="button"
+                        class="ghost icon"
+                        id="storyDirectionApproveBtn"
+                        data-feedback="approve"
+                        aria-label="Mark idea as helpful"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        type="button"
+                        class="ghost icon"
+                        id="storyDirectionRejectBtn"
+                        data-feedback="reject"
+                        aria-label="Dismiss this idea"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                  <p class="ai-card__feedback-status" id="storyDirectionFeedbackStatus" hidden></p>
+                </article>
               </div>
             </section>
 
