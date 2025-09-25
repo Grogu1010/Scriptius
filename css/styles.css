@@ -885,6 +885,46 @@ kbd {
   gap: 1.25rem;
 }
 
+.ai-card__intro {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+
+.ai-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.ai-card__actions button {
+  flex-shrink: 0;
+}
+
+.ai-card__status {
+  font-size: 0.85rem;
+  color: var(--text-soft);
+}
+
+.ai-card__output {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  padding: 1rem;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.ai-card__output.is-error {
+  border-color: var(--danger-soft);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .side-rail .panel {
   background: var(--panel-solid);
 }

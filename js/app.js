@@ -54,6 +54,10 @@ const toggleOutlineBtn = document.getElementById('toggleOutlineBtn');
 const togglePreviewBtn = document.getElementById('togglePreviewBtn');
 const writingPanel = document.querySelector('.writing-panel');
 const viewModeButtons = document.querySelectorAll('.view-switch__btn[data-view-mode]');
+const storyDirectionBtn = document.getElementById('storyDirectionBtn');
+const storyDirectionOutput = document.getElementById('storyDirectionOutput');
+const storyDirectionStatus = document.getElementById('storyDirectionStatus');
+const STORY_DIRECTION_DEFAULT_LABEL = storyDirectionBtn?.textContent?.trim() || 'Story direction';
 
 const DOCUMENTS_KEY = 'scriptius-documents';
 const ACTIVE_DOCUMENT_KEY = 'scriptius-active-document';
@@ -188,6 +192,7 @@ const previewState = {
 };
 let storageError = false;
 let storageErrorNotified = false;
+let storyDirectionAbortController = null;
 
 init();
 
@@ -241,6 +246,10 @@ function attachEventListeners() {
     markDirty();
     scheduleAutosave();
   });
+
+  if (storyDirectionBtn) {
+    storyDirectionBtn.addEventListener('click', handleStoryDirectionRequest);
+  }
 
   libraryBtn.addEventListener('click', openLibrary);
   closeLibraryBtn.addEventListener('click', closeLibrary);
@@ -2712,6 +2721,113 @@ function focusLine(lineIndex) {
   editor.focus();
   editor.setSelectionRange(caret, caret);
   highlightFromCaret(caret, { scrollPreview: true });
+}
+
+async function handleStoryDirectionRequest(event) {
+  event?.preventDefault?.();
+  if (!storyDirectionBtn || !storyDirectionOutput || !storyDirectionStatus) {
+    return;
+  }
+
+  const scriptExcerpt = createExcerpt(editor?.value || '', 3500);
+  const beatsExcerpt = createExcerpt(beatNotes?.value || '', 1200);
+
+  if (!scriptExcerpt && !beatsExcerpt) {
+    setStoryDirectionMessage(
+      'Add some pages or jot ideas in Quick beats so Story Direction has context to work with.'
+    );
+    storyDirectionStatus.textContent = '';
+    return;
+  }
+
+  if (storyDirectionAbortController) {
+    storyDirectionAbortController.abort();
+  }
+
+  storyDirectionAbortController = new AbortController();
+
+  setStoryDirectionLoading(true);
+
+  const userPrompt = [
+    scriptExcerpt ? `SCRIPT SO FAR:\n${scriptExcerpt}` : 'SCRIPT SO FAR:\n(No script text yet.)',
+    beatsExcerpt ? `QUICK BEATS:\n${beatsExcerpt}` : 'QUICK BEATS:\n(No quick beats entered.)',
+    'TASK: Suggest a specific next story development in two or three sentences. Reference characters or threads already mentioned and explain why the move keeps momentum.'
+  ].join('\n\n');
+
+  try {
+    const response = await fetch('https://histage.netlify.app/.netlify/functions/posts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'HiStageReasoning',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a seasoned screenwriting partner. Read the draft and quick beats carefully and craft one concise suggestion for what should happen next in the story.'
+          },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.25,
+        max_tokens: 700
+      }),
+      signal: storyDirectionAbortController.signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    const content = data?.choices?.[0]?.message?.content?.trim();
+
+    if (content) {
+      setStoryDirectionMessage(content);
+      storyDirectionStatus.textContent = 'Idea ready.';
+    } else {
+      setStoryDirectionMessage('The AI did not return a suggestion. Please try again.', { isError: true });
+      storyDirectionStatus.textContent = '';
+    }
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      return;
+    }
+    console.error('Story direction request failed', error);
+    setStoryDirectionMessage('Story Direction ran into a problem. Try again in a moment.', { isError: true });
+    storyDirectionStatus.textContent = '';
+  } finally {
+    setStoryDirectionLoading(false);
+    storyDirectionAbortController = null;
+  }
+}
+
+function setStoryDirectionLoading(isLoading) {
+  if (!storyDirectionBtn || !storyDirectionStatus) return;
+  storyDirectionBtn.disabled = isLoading;
+  storyDirectionBtn.textContent = isLoading ? 'Thinking…' : STORY_DIRECTION_DEFAULT_LABEL;
+  storyDirectionStatus.textContent = isLoading ? 'Gathering a next beat…' : storyDirectionStatus.textContent;
+  if (storyDirectionOutput) {
+    if (isLoading) {
+      storyDirectionOutput.setAttribute('aria-busy', 'true');
+    } else {
+      storyDirectionOutput.removeAttribute('aria-busy');
+    }
+  }
+}
+
+function setStoryDirectionMessage(message, options = {}) {
+  if (!storyDirectionOutput) return;
+  const { isError = false } = options;
+  storyDirectionOutput.hidden = false;
+  storyDirectionOutput.textContent = message;
+  storyDirectionOutput.classList.toggle('is-error', Boolean(isError));
+}
+
+function createExcerpt(text, limit = 3500) {
+  if (!text) return '';
+  const trimmed = text.trim();
+  if (trimmed.length <= limit) return trimmed;
+  return `…${trimmed.slice(trimmed.length - limit)}`;
 }
 
 window.addEventListener('beforeunload', (event) => {
