@@ -960,6 +960,68 @@ kbd {
   flex-shrink: 0;
 }
 
+.ai-card__implement-btn {
+  background: var(--positive-soft);
+  color: var(--positive);
+  font-weight: 600;
+  border-color: transparent;
+}
+
+.ai-card__implement-btn:hover {
+  background: rgba(22, 163, 74, 0.2);
+  color: var(--positive);
+}
+
+[data-theme='dark'] .ai-card__implement-btn {
+  background: rgba(74, 222, 128, 0.28);
+  color: #052e16;
+}
+
+[data-theme='dark'] .ai-card__implement-btn:hover {
+  background: rgba(74, 222, 128, 0.36);
+  color: #052e16;
+}
+
+.ai-card__implementation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--positive);
+  background: rgba(22, 163, 74, 0.08);
+  padding: 0.75rem 0.85rem;
+}
+
+[data-theme='dark'] .ai-card__implementation {
+  background: rgba(74, 222, 128, 0.12);
+  border-color: var(--positive);
+}
+
+.ai-card__implementation-text {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--positive);
+}
+
+.ai-card__implementation[data-state='committed'] {
+  border-style: solid;
+  background: var(--panel);
+}
+
+.ai-card__implementation[data-state='committed'] .ai-card__implementation-text {
+  color: var(--text);
+}
+
+.ai-card__implementation-actions {
+  display: inline-flex;
+  gap: 0.45rem;
+}
+
+.ai-card__implementation-actions button {
+  width: 36px;
+  height: 36px;
+}
+
 .ai-card__feedback {
   display: inline-flex;
   gap: 0.35rem;
@@ -993,6 +1055,10 @@ kbd {
 .ai-card__output.is-error {
   border-color: var(--danger-soft);
   background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.ai-card__status.is-error {
   color: var(--danger);
 }
 

@@ -261,29 +261,35 @@
                 <article class="ai-card__output" id="storyDirectionOutput" hidden aria-live="polite">
                   <p class="ai-card__idea" id="storyDirectionText"></p>
                   <div class="ai-card__idea-actions" id="storyDirectionActions" hidden>
-                    <button type="button" class="primary" id="storyDirectionImplementBtn">Implement idea</button>
-                    <div class="ai-card__feedback" role="group" aria-label="Rate this idea">
+                    <button type="button" class="ai-card__implement-btn" id="storyDirectionImplementBtn">
+                      Implement idea
+                    </button>
+                    <button type="button" class="ghost" id="storyDirectionRegenerateIdeaBtn">
+                      Regenerate idea
+                    </button>
+                  </div>
+                  <div class="ai-card__implementation" id="storyDirectionImplementation" hidden>
+                    <p class="ai-card__implementation-text" id="storyDirectionImplementationText"></p>
+                    <div class="ai-card__implementation-actions" id="storyDirectionImplementationActions">
                       <button
                         type="button"
                         class="ghost icon"
-                        id="storyDirectionApproveBtn"
-                        data-feedback="approve"
-                        aria-label="Mark idea as helpful"
+                        id="storyDirectionCommitBtn"
+                        aria-label="Add implementation to script"
                       >
                         ✓
                       </button>
                       <button
                         type="button"
                         class="ghost icon"
-                        id="storyDirectionRejectBtn"
-                        data-feedback="reject"
-                        aria-label="Dismiss this idea"
+                        id="storyDirectionDiscardBtn"
+                        aria-label="Discard implementation"
                       >
                         ✕
                       </button>
                     </div>
                   </div>
-                  <p class="ai-card__feedback-status" id="storyDirectionFeedbackStatus" hidden></p>
+                  <p class="ai-card__status" id="storyDirectionImplementStatus" hidden></p>
                 </article>
               </div>
             </section>
