@@ -913,6 +913,12 @@ kbd {
   background: var(--accent-soft);
   padding: 0.2rem 0.65rem;
   border-radius: 999px;
+  text-decoration: none;
+}
+
+.ai-card__powered:focus,
+.ai-card__powered:hover {
+  text-decoration: underline;
 }
 
 .ai-card__actions {
